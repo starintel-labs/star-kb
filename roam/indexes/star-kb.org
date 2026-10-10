@@ -14,9 +14,12 @@ Research and the Prolog projection/query design are approved. The active bounded
 
 No bulk real-world ingestion is authorized in this slice.
 
+The no-LLM rewarded symbolic learning / Aleph / active learning / Wolfram direction is *proposed research*, not an approved runtime slice. [[https://github.com/starintel-labs/star-kb/pull/8][Actor learning PR #8]] is a separate, currently unmerged integration dependency; do not duplicate its candidate/admission machinery.
+
 * Active research
 - [[file:../research/star-kb/dialect-and-kb-research.org][Dialect and KB architecture research]]
 - [[file:../research/star-kb/public-starintel-rules-research.org][Public StarIntel rule KB and IQ improvements research]]
+- [[id:star-kb-reward-guided-symbolic-learning-research][Reward-guided symbolic learning / Aleph / Wolfram research (proposed)]]
 
 * Active design
 - [[file:../design/star-kb/prolog-kb-query-server-design.org][Prolog KB/query and JSON projection design]]
@@ -33,6 +36,7 @@ No bulk real-world ingestion is authorized in this slice.
 6. Add engine adapters chosen by semantic capability.
 7. Grow domain semantic indexes without sacrificing lossless generic projection.
 8. Only then begin controlled corpus ingestion/materialization.
+9. Gate the proposed Aleph induction, human active learning, reward optimizer, canonical document publisher, and optional Wolfram adapter as separate research/design/verification slices. Reuse PR #8 after it is reconciled; do not create a duplicate learning protocol.
 
 * Gates
 | Gate | State | Requirement |
@@ -41,6 +45,7 @@ No bulk real-world ingestion is authorized in this slice.
 | Design | approved | Project owner approved JSON-projection design |
 | Implementation | active | Bounded =prolog-star-kb= slice only |
 | Bulk ingestion | blocked | Requires separate explicit gate |
+| Reward-driven symbolic learning | research pending | New research note requires explicit owner approval before design or implementation |
 
 * Approval Table
 | Approval area | Required authority | State | Evidence required | Evidence reference |
@@ -49,9 +54,11 @@ No bulk real-world ingestion is authorized in this slice.
 | Design | Project owner | APPROVED | Explicit review/approval | prolog-kb-query-server-design.org |
 | Execution | Project owner | APPROVED | Explicit request to implement =prolog-star-kb= | feature/prolog-star-kb-projection |
 | Verification | Repository maintainer | PENDING | CI and runtime verification | implementation PR |
+| Rewarded symbolic learning research | Project owner | PENDING | Review proposed objective semantics, learning trust boundaries and PR #8 reuse | rewarded-symbolic-learning-research.org |
 
 * Changelog
 - 2026-09-10 :: Created initial Star KB project index and design gate.
 - 2026-09-18 :: Recorded explicit approval and active =prolog-star-kb= implementation slice.
 - 2026-09-18 :: Clarified canonical JSON -> deterministic Prolog projection architecture.
 - 2026-09-19 :: Added proposed public StarIntel rule KB research (pending approval).
+- 2026-10-10 :: Linked proposed rewarded symbolic learning/Aleph/active-learning/Wolfram research; no design or implementation approval implied.
