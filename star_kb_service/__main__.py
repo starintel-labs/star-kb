@@ -12,6 +12,31 @@ from .runtime import Principal, Service
 from .transports import http_server, ZmqServer
 
 
+def shutdown(service, http=None, thread=None, zmq=None):
+    """Attempt every cleanup even when a listener or worker reports failure."""
+    service.closed = True
+    if zmq is not None:
+        zmq.stop.set()
+    failures = []
+    actions = []
+    if http is not None:
+        if thread is not None:
+            actions.append(http.shutdown)
+        actions.append(http.server_close)
+    if zmq is not None:
+        actions.append(zmq.close)
+    actions.append(service.close)
+    if thread is not None:
+        actions.append(lambda: thread.join(timeout=1))
+    for action in actions:
+        try:
+            action()
+        except Exception as exc:
+            failures.append(exc)
+    if failures:
+        raise failures[0]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=Path)
@@ -48,13 +73,7 @@ def main():
                           "zmq": f"tcp://127.0.0.1:{zmq.port}"}), flush=True)
         stopped.wait()
     finally:
-        if http:
-            if thread is not None:
-                http.shutdown()
-            http.server_close()
-        if zmq:
-            zmq.close()
-        service.close()
+        shutdown(service, http, thread, zmq)
 
 
 if __name__ == "__main__":

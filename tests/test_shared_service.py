@@ -205,6 +205,57 @@ class SharedServiceTests(unittest.TestCase):
             with self.assertRaises(Fault):
                 Snapshot(self.root, "a", "d", [bad])
 
+    def test_shutdown_listener_failure_still_reaps_all_workers(self):
+        from star_kb_service.__main__ import shutdown
+        from unittest.mock import patch
+        processes = [e.process for e in self.engines.values()]
+        close = self.zmq.close
+
+        def report_failure():
+            close()
+            raise RuntimeError("controlled listener cleanup failure")
+
+        with patch.object(self.zmq, "close", side_effect=report_failure):
+            with self.assertRaisesRegex(RuntimeError, "controlled listener"):
+                shutdown(self.service, self.http, self.thread, self.zmq)
+        self.assertTrue(self.service.closed)
+        self.assertFalse(self.zmq.thread.is_alive())
+        self.assertFalse(self.thread.is_alive())
+        for process in processes:
+            self.assertIsNotNone(process.poll())
+            self.assertEqual([], Engine.session_pids(process.pid))
+
+    def test_shutdown_during_real_zmq_query_reaps_owned_workers(self):
+        from star_kb_service.__main__ import shutdown
+        processes = [e.process for e in self.engines.values()]
+        pending = self.call(self.query(timeoutMs=5000))
+        os.killpg(processes[0].pid, signal.SIGSTOP)
+        results = []
+        request = self.request("next", handle=pending["handle"])
+        client = threading.Thread(target=lambda: results.append(self.call(request, "zmq")), daemon=True)
+        client.start()
+        deadline = time.monotonic() + 1
+        while not self.service.lock.locked() and time.monotonic() < deadline:
+            time.sleep(.001)
+        self.assertTrue(self.service.lock.locked(), "real worker query did not start")
+        started = time.monotonic()
+        try:
+            shutdown(self.service, self.http, self.thread, self.zmq)
+            self.assertLess(time.monotonic() - started, 12)
+            self.assertTrue(self.service.closed)
+            self.assertFalse(self.thread.is_alive())
+            self.assertFalse(self.zmq.thread.is_alive())
+            client.join(1)
+            self.assertFalse(client.is_alive())
+            self.assertEqual("deadline_exceeded", results[0]["error"])
+            for process in processes:
+                self.assertIsNotNone(process.poll())
+                self.assertEqual([], Engine.session_pids(process.pid))
+        finally:
+            self.service.close()
+            self.zmq.close()
+            client.join(1)
+
     def test_shutdown_and_malformed_wire(self):
         reply = self.service.handle(self.tokens[0], b'{"id":"a","id":"b"}')
         self.assertEqual("invalid_request", reply["error"])

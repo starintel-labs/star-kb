@@ -6,7 +6,7 @@ import logging
 import time
 import zmq
 from zmq.auth.thread import ThreadAuthenticator
-from .contracts import MAX_BYTES, PROTOCOL, Fault, decode, encode, closed
+from .contracts import DISPATCH_SHUTDOWN_SECONDS, MAX_BYTES, PROTOCOL, Fault, decode, encode, closed
 
 
 def error(code):
@@ -177,6 +177,6 @@ class ZmqServer:
 
     def close(self):
         self.stop.set()
-        self.thread.join(timeout=3)
+        self.thread.join(timeout=DISPATCH_SHUTDOWN_SECONDS)
         if self.thread.is_alive():
             raise RuntimeError("ZMQ shutdown deadline exceeded")

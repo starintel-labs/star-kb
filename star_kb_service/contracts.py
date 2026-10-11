@@ -51,3 +51,11 @@ def decode(data):
                           parse_constant=lambda _: (_ for _ in ()).throw(Fault("invalid_request")))
     except (ValueError, UnicodeError, RecursionError):
         raise Fault("invalid_request") from None
+
+# Shared lifecycle bounds; transport shutdown must cover a running query.
+MAX_QUERY_MS = 5000
+ENGINE_EOF_SECONDS = .5
+ENGINE_WAIT_SECONDS = 2
+ENGINE_REAP_SECONDS = 2
+DISPATCH_SHUTDOWN_SECONDS = (MAX_QUERY_MS / 1000 + ENGINE_EOF_SECONDS
+                             + ENGINE_WAIT_SECONDS + ENGINE_REAP_SECONDS + 1.5)

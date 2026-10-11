@@ -41,3 +41,11 @@ Still open: generated actor/service wire binding, encrypted remote listeners, in
 
 * Changelog
 - 2026-10-11 :: Added the bounded service slice and recorded source/ownership boundaries, runtime lessons and explicit remaining milestones.
+
+** Active-query shutdown review correction
+The three-second ZMQ join could expire before an admitted five-second query and
+skip CLI engine cleanup. Shared deadline/cleanup constants now give the dispatch
+thread eleven seconds; CLI and service cleanup attempt all resources before
+reporting errors. Real paused-SBCL/ZMQ regression reproduced the old failure and
+checks owned SWI/SBCL reaping. Fresh exact-head CI and independent review remain
+required; this correction does not authorize merge or advance persistence gates.
