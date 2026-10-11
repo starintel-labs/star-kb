@@ -66,3 +66,11 @@ CouchDB and SWI proof passed five tests including restart, replay, race, tenant
 isolation and full extension/provenance retention. Native server CI remains a
 separate gate. This does not complete inferred Claim or proactive expert agenda
 acceptance. See [[file:../../../../docs/canonical-readback.md][readback evidence]].
+** Producer packaging issue #24
+Dedicated feat/24-producer-flake work adds locked CLI/harness packages and
+installed-source adapter byte verification. See [[file:../../../../docs/producer-packages.md][producer packages]].
+Linux x86_64 is the only declared system. Shared-service packaging still needs a
+producer-owned StarLang adapter runtime export; no consumer runtime is duplicated.
+Local Python validation passed 122 tests including actual SWI; local Nix builds
+encountered proxy HTTP 403 fetching dependencies, so exact-head CI owns build
+and installed CLI evidence. This does not complete issue #24 or persistence #23.

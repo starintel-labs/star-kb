@@ -56,12 +56,13 @@ jobs:
         source_id: ${{ fromJSON(needs.prepare.outputs.ids) }}
     env:
       SOURCE_ID: ${{ matrix.source_id }}
-      ARTIFACT_DIR: ${{ runner.temp }}/star-kb-collect
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      - name: Set temporary artifact directory
+        run: echo "ARTIFACT_DIR=$RUNNER_TEMP/star-kb-collect" >> "$GITHUB_ENV"
       - name: Collect raw envelope and normalized candidates (temp dir, never committed)
         run: |
           python3 -c 'import json, os, sys; sys.path.insert(0, "."); from collectors import run_source; print(json.dumps(run_source("sources/registry.json", os.environ["SOURCE_ID"], os.environ["ARTIFACT_DIR"]), sort_keys=True))'
