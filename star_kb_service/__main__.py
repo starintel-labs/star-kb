@@ -1,5 +1,6 @@
 """Local service runner. No deployment and no secret values in configuration."""
 import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import threading
 from .contracts import closed
 from .engine import Engine
 from .projection import Snapshot
+from .persistence import ServerDocuments
 from .runtime import Principal, Service
 from .transports import http_server, ZmqServer
 
@@ -37,6 +39,36 @@ def shutdown(service, http=None, thread=None, zmq=None):
         raise failures[0]
 
 
+def configured_service(config, root):
+    """Release earlier workers when a later scope or credential fails startup."""
+    with ExitStack() as owned:
+        engines = {}
+        for scope in config["scopes"]:
+            closed(scope, ("tenant", "dataset"), ("documents", "server"))
+            key = scope["tenant"], scope["dataset"]
+            if key in engines:
+                raise ValueError("duplicate scope")
+            if ("documents" in scope) == ("server" in scope):
+                raise ValueError("scope requires exactly one snapshot source")
+            if "server" in scope:
+                store = closed(scope["server"], ("url", "tokenEnv", "documentIds"))
+                snapshot = ServerDocuments(root, *key, store["url"], os.environ[store["tokenEnv"]]).snapshot(store["documentIds"])
+            else:
+                snapshot = Snapshot(root, *key, scope["documents"])
+            engines[key] = Engine(root, os.environ["STAR_KB_SBCL"], os.environ["STARLANG_SWI_EXECUTABLE"], snapshot)
+            owned.callback(engines[key].close)
+        credentials = {}
+        for item in config["credentials"]:
+            closed(item, ("identity", "tenant", "dataset", "tokenEnv"))
+            token = os.environ[item["tokenEnv"]]
+            if token in credentials:
+                raise ValueError("duplicate credential")
+            credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"])
+        service = Service(credentials, engines)
+        owned.pop_all()
+        return service
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=Path)
@@ -44,22 +76,7 @@ def main():
     args = parser.parse_args()
     config = closed(json.loads(args.config.read_bytes()), ("scopes", "credentials"))
     root = os.environ["STARLANG_ROOT"]
-    engines = {}
-    for scope in config["scopes"]:
-        closed(scope, ("tenant", "dataset", "documents"))
-        key = scope["tenant"], scope["dataset"]
-        if key in engines:
-            raise ValueError("duplicate scope")
-        snapshot = Snapshot(root, *key, scope["documents"])
-        engines[key] = Engine(root, os.environ["STAR_KB_SBCL"], os.environ["STARLANG_SWI_EXECUTABLE"], snapshot)
-    credentials = {}
-    for item in config["credentials"]:
-        closed(item, ("identity", "tenant", "dataset", "tokenEnv"))
-        token = os.environ[item["tokenEnv"]]
-        if token in credentials:
-            raise ValueError("duplicate credential")
-        credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"])
-    service = Service(credentials, engines)
+    service = configured_service(config, root)
     http = zmq = thread = None
     stopped = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
