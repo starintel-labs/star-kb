@@ -79,7 +79,8 @@ class InstalledServiceTests(unittest.TestCase):
                     self.assertEqual("completed", result["state"])
                     self.assertEqual("b", result["answers"][0]["destination"])
                     self.assertEqual(document()["evidence"], result["answers"][0]["provenance"]["evidence"])
-                    self.assertIn(STARLANG_COMMIT, json.dumps(result))
+                    health = http({"protocol": PROTOCOL, "id": "installed-health", "operation": "health"})
+                    self.assertEqual(STARLANG_COMMIT, health["adapterCommit"])
                 finally:
                     process.terminate()
                     try:
