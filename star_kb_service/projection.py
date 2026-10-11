@@ -10,7 +10,7 @@ from jsonschema import Draft202012Validator
 from prolog_star_kb.projection import _walk
 from .contracts import Fault, encode, string, MAX_BYTES
 
-STARLANG_COMMIT = "bfba04a15f43215cd323e1dde2d98a7343abb3ea"
+STARLANG_COMMIT = "4c8d1e19249a5030b7d97f953f694c09849b9131"
 CANONICAL_COMMIT = "96d26c338078676ec1dc6928755901636c9f7ef0"
 SCHEMA_HASH = "1d677d679adcf64ed2df6e9e98eff47c3f66f67f10efbe4c4b69f7fffa2def0a"
 CORE_HASH = "e09205e71fcd0f2bf87ff7d104c5ccff298d0054764def81e00f81a6bd8639fc"
