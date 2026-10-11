@@ -6,9 +6,10 @@ import tempfile
 import unittest
 
 from star_kb_service.contracts import Fault
-from star_kb_service.identity import verify_adapter_source
 
 ROOT = os.environ.get("STARLANG_IDENTITY_ROOT") or os.environ.get("STARLANG_ROOT")
+if ROOT:
+    from star_kb_service.identity import verify_adapter_source
 
 
 @unittest.skipUnless(ROOT, "pinned adapter source required")
@@ -18,6 +19,11 @@ class AdapterIdentityTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "installed"
         shutil.copytree(ROOT, self.root, ignore=shutil.ignore_patterns(".git"))
+        # The source may come from the read-only Nix store. Mutate only this
+        # owned test copy, so failures exercise identity rather than file modes.
+        self.root.chmod(self.root.stat().st_mode | 0o700)
+        for path in self.root.rglob("*"):
+            path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o200))
 
     def test_installed_without_git_has_exact_content_identity(self):
         self.assertFalse((self.root / ".git").exists())
