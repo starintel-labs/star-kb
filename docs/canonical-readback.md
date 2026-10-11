@@ -87,3 +87,37 @@ Proactive changefeed experts, typed Targets/actions, feedback and bounded dedup
 remain the following milestone using #8 and the existing server owners. RabbitMQ
 remains queued after HTTP/ZMQ. Remote hardening, cluster storage and NLP scales
 remain separate; the trusted-loopback multipart memory limitation still applies.
+
+## Implemented source readback slice (PR #23)
+
+The operator client `python -m star_kb_service.persistence config.json source.json`
+validates a generated 0.10.1 directed Relation, checks the server create-only
+capability, performs conditional creation and compares full authorized readback
+against the original body (excluding only server-owned `rev`). Its closed config
+contains `tenant`, `dataset`, loopback `url`, and `tokenEnv`; only the environment
+holds the credential. It rejects caller-supplied revisions. Star-KB has no direct
+CouchDB credentials or independent durable store.
+
+A service scope can specify `server: {url, tokenEnv, documentIds}` instead of
+`documents`. Startup reads at most 256 named documents within five seconds and
+the aggregate byte budget, then constructs the existing immutable typed snapshot.
+A failed later scope cleans up earlier workers. No live changefeed is claimed.
+
+`service/readback_integration.py` owns disposable synthetic Docker resources and
+uses actual server/CouchDB, generated contracts and SBCL/SWI. On 2026-10-11,
+baseline server 491b89d failed one real conditional-write test (200 instead of 412).
+The server #290 worktree passed all five integration tests in 28.800 seconds:
+conditional creation, unchanged replay, conflict/race rejection, foreign-scope
+denial, complete extension preservation, restart/readback and a fresh query
+retaining evidence and stored revision. Six client boundary/cleanup tests pass; the final full regression run passed
+124 tests in 47.982 seconds. A repeat durable run passed five tests in 28.669
+seconds after using the named CouchDB node already configured in server CI.
+Prolog smoke, sync, documentation validation and workflow lint also passed.
+
+The local Docker proof uses the pinned image in the harness with an explicit
+source overlay. VFS required a filesystem-equivalent flattened local image via
+`STAR_KB_TEST_SERVER_IMAGE`; details are recorded in the server evidence document.
+Native exact-head server build/CI is still required. This proves a durable source
+Relation, not a newly inferred Claim. Crash after commit but before acknowledgment,
+source-freshness fencing, actual domain inference, proactive experts, and RabbitMQ
+actor transport remain open acceptance milestones above.
