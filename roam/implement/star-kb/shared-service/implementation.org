@@ -74,3 +74,10 @@ producer-owned StarLang adapter runtime export; no consumer runtime is duplicate
 Local Python validation passed 122 tests including actual SWI; local Nix builds
 encountered proxy HTTP 403 fetching dependencies, so exact-head CI owns build
 and installed CLI evidence. This does not complete issue #24 or persistence #23.
+
+** Installed-service producer repin
+StarLang PR #216 merged the producer runtime export at 4c8d1e19249a5030b7d97f953f694c09849b9131.
+The separate installed-service slice consumes that output, refreshes the exact
+source inventory, and adds actual installed CLI plus HTTP/ZMQ lifecycle checks.
+Canonical schema hashes and service capabilities remain unchanged. Exact-head
+installed-package CI and independent review are required before completion.
