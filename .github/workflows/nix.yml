@@ -1,0 +1,28 @@
+name: producer-nix
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  installed-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Check exact producer head and installed tools
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          nix flake check --no-update-lock-file -L
+          nix build .#prolog-star-kb --no-update-lock-file
+          tool="$(readlink -f result)/bin/prolog-star-kb"
+          harness="$(readlink -f result)/bin/starintel-llm"
+          cd "$RUNNER_TEMP"
+          "$tool" --help
+          "$harness" --help
