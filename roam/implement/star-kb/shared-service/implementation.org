@@ -1,0 +1,51 @@
+#+title: Shared KB service implementation slice
+#+description: Issue 15 authenticated HTTP and ZMQ service over the pinned real StarLang SWI adapter, with explicit canonical boundary and remaining milestones.
+#+status: draft
+#+filetags: :star-kb:implementation:service:prolog:
+:PROPERTIES:
+:ID: star-kb-shared-service-implementation
+:END:
+
+* Scope and authority
+User direction on 2026-10-11 explicitly requests implementation in star-kb under issue 15. This dedicated branch adds no changes to the open learning, maturity or design branches. Existing project research and projection design remain at [[id:star-kb-dialect-and-kb-research]] and [[id:star-kb-prolog-kb-query-server-design]].
+
+Implementation contract, source pins, commands, limits and milestone acceptance are in [[file:../../../../docs/shared-service.md][the service contract]]. No deployment or canonical promotion is performed.
+
+* Architecture and canonical boundary
+Both listeners share authentication, trusted scope, request replay, lifecycle and the actual StarLang Common Lisp SWI adapter at bfba04a15f43215cd323e1dde2d98a7343abb3ea. The fixed relation query consumes bounded data-only rows; it does not expose Prolog source or caller goals.
+
+The old projector remains legacy 0.9.x. The new narrow bridge validates generated flat 0.10.1 Relation records, retains evidence/revisions and reuses the lossless JSON-Pointer walker. Directed source relations are returned, not inferred canonical truth. Exact schema, source, bootstrap, executable and generation identities are retained.
+
+* Runtime lessons
+A killed Lisp supervisor can orphan its SWI child. Group termination alone did not reap the orphan in the initial experiment. Linux subreaper adoption plus session-scoped pidfd signaling and waitpid resolves the owned descendant; normal EOF lets the existing adapter reap its own worker. Integration tests cover abrupt death, stopped groups, terminal failure and fresh-worker snapshot replay.
+
+A Debian runtime extracted without package post-install hooks needs make_library_index(swi(library)); otherwise MQI fails resolving uuid:option/3. This is environment setup, not an upstream adapter defect. No StarLang process-drain race fix was duplicated.
+
+* Ingress review correction
+Independent review identified unauthenticated HTTP body waiting and progress-reset socket timeouts. Both were reproduced against the pre-fix tree. HTTP now authenticates before waiting on body bytes and uses an absolute two-second header/body read deadline with bounded serving concurrency. ZMQ transport authentication precedes application payloads; multipart is not drained, and the listener is recycled within a deadline. Six bounded real-socket security fixtures are distinct from ten real-SWI integration tests. Local full regression: 116 tests passed. Exact-head CI and independent re-review remain required before any merge.
+
+ZMQ PLAIN is loopback-only and is not encryption. libzmq can buffer authenticated multipart input before Python receives it, so an aggregate native-memory cap is not claimed; hostile remote multi-tenant exposure still requires native-worker memory isolation.
+
+* Verification and remaining gates
+Local real service suite: 10 tests cover the reaping fix, query bounds and admission budgets. Repository tests and exact-head CI evidence are recorded in the PR and service evidence note. No skipped or mock adapter test is counted as real integration.
+
+Still open: generated actor/service wire binding, encrypted remote listeners, in-flight cancellation, canonical durable derived-document write/readback, proactive bounded expert agenda, RabbitMQ, and multi-node storage/partition/replay/convergence. The distributed node/placement/consistency proposal is explicit in the service contract, not an implementation claim. NLP classifications remain later scope.
+
+* Approval Table
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Execution | Project owner | APPROVED | Explicit service implementation request | 2026-10-11 user delegation, issue 15 |
+| Verification | Maintainer | PENDING | Exact-head CI and review | Dedicated implementation draft PR |
+| Deployment | Project owner | NOT STARTED | Separate deployment request | Not requested |
+| Cluster storage | Project owner | NOT STARTED | Multi-node convergence and failover evidence | docs/shared-service.md |
+
+* Changelog
+- 2026-10-11 :: Added the bounded service slice and recorded source/ownership boundaries, runtime lessons and explicit remaining milestones.
+
+** Active-query shutdown review correction
+The three-second ZMQ join could expire before an admitted five-second query and
+skip CLI engine cleanup. Shared deadline/cleanup constants now give the dispatch
+thread eleven seconds; CLI and service cleanup attempt all resources before
+reporting errors. Real paused-SBCL/ZMQ regression reproduced the old failure and
+checks owned SWI/SBCL reaping. Fresh exact-head CI and independent review remain
+required; this correction does not authorize merge or advance persistence gates.
