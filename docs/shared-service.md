@@ -87,7 +87,14 @@ remote ZMQ needs CURVE or an equivalently authenticated private channel before
 non-loopback binding is added. No deployment was performed.
 
 HTTP: POST JSON to `/v1/kb` with `Authorization: Bearer <environment secret>`.
-ZMQ: one JSON frame `{"authorization":"<environment secret>","request":{...}}`.
+ZMQ requires ZMTP PLAIN authentication first: set `plain_username` to the
+configured principal identity and `plain_password` to its environment secret
+before connecting. Then send one JSON frame
+`{"authorization":"<environment secret>","request":{...}}`. The authenticated
+transport identity must match the application principal. PLAIN is permitted only
+on the loopback listener; it is not remote encryption. Peers without transport
+authentication are disconnected before application payload processing, rather
+than receiving a JSON error. Authenticated application errors retain HTTP parity.
 Both use the same operation object and response bytes/semantics:
 
 ```json
@@ -107,9 +114,14 @@ This returns `pending` and `handle`. `next`, `status`, `cancel` take `handle`
 instead of query parameters. `next` executes actual SWI and publishes the bounded
 complete result or a terminal failure. Missing matches yield `no-answer`.
 Cancellation of pending work is terminal; late cancellation preserves completion.
-**In-flight cancellation is not implemented:** concurrent calls return `busy` and
-a deadline watchdog retires the entire worker process group. This differs from
-pending cancellation and is tested separately with an actual SIGSTOP.
+**In-flight cancellation is not implemented.** A dispatcher call competing with
+an executing `next` returns `busy`; the single serving thread per transport may
+instead queue a same-transport call until `next` completes. A queued cancel may
+therefore observe a completed result rather than interrupt it. Pending deadlines
+are checked on `next`/`status` dispatch, not by a background expiration timer.
+The running-query deadline watchdog retires and reaps the owned worker session;
+this is a terminal timeout failure, not successful in-flight cancellation.
+Pending cancellation and actual SIGSTOP timeout cleanup are tested separately.
 
 Scope comes exclusively from token identity and trusted catalog configuration.
 A body cannot widen scope; foreign operation handles fail. Service admission is
@@ -194,3 +206,44 @@ may report explicit skips if its runtime is absent. `service/benchmark.py` recor
 a reproducible synthetic 32-relation baseline (20 direct, 5 HTTP, 5 ZMQ query/next pairs) with cold projection/worker
 cost, warm latency/throughput, memory high-water marks and bounds. It measures fresh-client loopback RPC as well as direct dispatch; it is not a
 remote transport or cluster benchmark. No optimization claim precedes measurement.
+
+## Review-time dependency decision
+
+PR #21 stays pinned to merged StarLang #213 (`bfba04a`) while its exact head is
+under independent review. Inspected merged #214 (`1876a5545db5e5a64b6a75e675f8d60a6bad3385`)
+fixes `run-process` capture-thread termination acknowledgement. This service uses
+the SWI adapter's `launch-process`/direct stream/`dispose-process` path, not the
+changed capture-thread path. The fix is not copied into Star-KB. Follow review
+with a separate dependency-only repin and fresh service lifecycle/CI evidence
+before adding integrations that use `run-process`; upstream tests alone do not
+prove a service-level repin.
+
+## Ingress security review follow-up
+
+HTTP authenticates the bearer before body reading. One absolute two-second
+connection-read deadline covers both headers and body; byte progress cannot reset
+it. Read bytes are capped at 262144 plus 65536 header allowance; response socket
+writes have a 0.5-second timeout. The listener retains one serving thread, so
+slow-client concurrency is bounded; shutdown can wait for that finite active
+request, not indefinitely for progress. Running query watchdog/cleanup bounds
+remain separate from the body-read budget.
+
+ZMQ authenticates with ZAP/PLAIN before application frames enter its queue,
+limits handshake time to one second and individual frames to 262144 bytes, and
+accepts exactly one application frame. Multipart input retires/rebinds the REP
+socket instead of draining arbitrary frame counts/aggregate bytes. Offending
+requests receive no application reply; unrelated peers may reconnect/retry their
+stable request IDs. Socket rebind and thread shutdown have finite budgets. ZAP
+logging is disabled because third-party debug logs can include PLAIN passwords.
+
+The accepted application aggregate is one frame/262144 bytes. libzmq may buffer
+a whole multipart message before Python receives its first frame, so its
+per-frame option is not an aggregate native-memory cap against a malicious
+**authenticated** peer. ZAP closes the unauthenticated payload path; separate
+native-worker memory isolation remains required before hostile remote multi-
+tenant exposure. This limitation is explicit, not an aggregate-memory claim.
+
+Transport security fixtures use bounded local sockets (at most 32 frames or
+264 KiB), with real pyzmq/libzmq, and are counted separately from SWI integration.
+The regressions reproduce unauthenticated body waiting, progressing-body shutdown
+stall and missing transport-authentication enforcement on the old tree.

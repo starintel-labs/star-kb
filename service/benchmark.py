@@ -54,6 +54,8 @@ try:
                         headers={"Authorization": "Bearer " + "x" * 32}), timeout=10) as response:
                         return json.load(response)
                 with zmq.Context() as ctx, ctx.socket(zmq.REQ) as socket:
+                    socket.plain_username = b"bench"
+                    socket.plain_password = b"x" * 32
                     socket.setsockopt(zmq.LINGER, 0)
                     socket.setsockopt(zmq.RCVTIMEO, 10000)
                     socket.connect(f"tcp://127.0.0.1:{zmq_server.port}")
