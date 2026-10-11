@@ -6,6 +6,7 @@ import hmac
 import threading
 import time
 from .contracts import PROTOCOL, Fault, closed, decode, encode, integer, string
+from .contracts import MAX_QUERY_MS
 from .projection import SCHEMA_HASH, STARLANG_COMMIT
 
 
@@ -111,7 +112,7 @@ class Service:
             limits = closed(req.get("limits", {}), (), ("answers", "output-bytes"))
             limits = {"answers": integer(limits.get("answers", 128), 1, 128),
                       "output-bytes": integer(limits.get("output-bytes", 65536), 1, 65536)}
-            timeout = integer(req.get("timeoutMs", 5000), 1, 5000)
+            timeout = integer(req.get("timeoutMs", MAX_QUERY_MS), 1, MAX_QUERY_MS)
             if sum(p == principal.identity for p, _ in self.operations) >= 32:
                 raise Fault("operation_budget")
             # Principal namespace + request id is a stable replay identity, not
@@ -150,10 +151,17 @@ class Service:
                 if k not in ("deadline", "parameters", "limits")}
 
     def close(self):
+        # Stop admission before waiting for the active bounded dispatch.
+        self.closed = True
+        failures = []
         with self.lock:
-            self.closed = True
             for operation in self.operations.values():
                 if operation["state"] == "pending":
                     operation["state"] = "cancelled"
             for engine in self.engines.values():
-                engine.close()
+                try:
+                    engine.close()
+                except Exception as exc:
+                    failures.append(exc)
+        if failures:
+            raise failures[0]

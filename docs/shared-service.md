@@ -247,3 +247,20 @@ Transport security fixtures use bounded local sockets (at most 32 frames or
 264 KiB), with real pyzmq/libzmq, and are counted separately from SWI integration.
 The regressions reproduce unauthenticated body waiting, progressing-body shutdown
 stall and missing transport-authentication enforcement on the old tree.
+
+## Active-query shutdown
+
+CLI shutdown stops admission, asks ZMQ to stop receiving, and attempts every
+listener and engine cleanup even if an earlier cleanup fails. Service cleanup
+also attempts every scoped engine before reporting its first failure. ZMQ joins
+for 11 seconds: the shared five-second maximum query deadline, 0.5-second EOF
+allowance, two-second worker wait, two-second descendant reap, and 1.5 seconds
+for reply/poll/transport teardown. These bounds share constants with enforcement.
+This is a dispatch-thread budget, not a promise that all 16 scoped workers close
+within 11 seconds; scoped engine cleanup is sequential and individually bounded.
+
+A real integration regression pauses the owned SBCL process during an admitted
+five-second ZMQ query, invokes the CLI shutdown path, and checks both listener
+threads and every owned SBCL/SWI session are gone. It reproduced the former
+three-second join exception before the fix. A separate controlled listener-error
+case verifies that engine cleanup still runs and the error remains observable.

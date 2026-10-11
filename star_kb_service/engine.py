@@ -9,6 +9,7 @@ import subprocess
 import time
 from .contracts import Fault, encode, decode, MAX_BYTES
 from .projection import STARLANG_COMMIT
+from .contracts import ENGINE_EOF_SECONDS, ENGINE_WAIT_SECONDS, ENGINE_REAP_SECONDS
 
 
 class Engine:
@@ -107,7 +108,7 @@ class Engine:
             # EOF allows the adapter to shut down and reap SWI normally.
             process.stdin.close()
             try:
-                process.wait(timeout=.5)
+                process.wait(timeout=ENGINE_EOF_SECONDS)
             except subprocess.TimeoutExpired:
                 pass
             # SBCL's process port puts SWI in its own process group, but
@@ -126,8 +127,8 @@ class Engine:
                 finally:
                     if fd is not None:
                         os.close(fd)
-            process.wait(timeout=2)
-            deadline = time.monotonic() + 2
+            process.wait(timeout=ENGINE_WAIT_SECONDS)
+            deadline = time.monotonic() + ENGINE_REAP_SECONDS
             for pid in owned:
                 if pid == process.pid:
                     continue
