@@ -76,6 +76,10 @@ class SharedServiceTests(unittest.TestCase):
             with response:
                 return json.load(response)
         with zmq.Context() as ctx, ctx.socket(zmq.REQ) as sock:
+            # Transport authentication is mandatory before application frames.
+            transport_token = token if token in self.tokens else self.tokens[0]
+            sock.plain_username = ("alice" if transport_token == self.tokens[0] else "bob").encode()
+            sock.plain_password = transport_token.encode()
             sock.setsockopt(zmq.LINGER, 0)
             sock.setsockopt(zmq.RCVTIMEO, 60000)
             sock.connect(f"tcp://127.0.0.1:{self.zmq.port}")
