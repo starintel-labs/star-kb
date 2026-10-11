@@ -1,0 +1,46 @@
+name: shared-service
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  real-swi-http-zmq:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lost-rob0t/star-lang
+          ref: bfba04a15f43215cd323e1dde2d98a7343abb3ea
+          path: .deps/star-lang
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install real runtimes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl swi-prolog-nox cl-bordeaux-threads cl-babel cl-ironclad cl-usocket cl-yason cl-fiveam
+          python3 -m pip install -r service/requirements.txt
+      - name: Integration and regression gates
+        env:
+          STARLANG_ROOT: ${{ github.workspace }}/.deps/star-lang
+          STAR_KB_SBCL: /usr/bin/sbcl
+          STARLANG_SWI_EXECUTABLE: /usr/bin/swipl
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 scripts/sync.py
+          python3 scripts/sync.py --check
+          python3 scripts/validate-docs.py
+      - name: Record bounded workload baseline
+        env:
+          STARLANG_ROOT: ${{ github.workspace }}/.deps/star-lang
+          STAR_KB_SBCL: /usr/bin/sbcl
+          STARLANG_SWI_EXECUTABLE: /usr/bin/swipl
+        run: python3 service/benchmark.py > benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shared-service-evidence
+          path: benchmark.json
