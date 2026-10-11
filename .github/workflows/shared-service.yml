@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: lost-rob0t/star-lang
-          ref: bfba04a15f43215cd323e1dde2d98a7343abb3ea
+          ref: 4c8d1e19249a5030b7d97f953f694c09849b9131
           path: .deps/star-lang
       - uses: actions/checkout@v4
         with:
