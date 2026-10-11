@@ -58,3 +58,11 @@ feat/15-canonical-readback branch starts the next slice under #15, reusing serve
 The current merging upsert needs an owner-side compare-or-create guard before
 immutable replay can be claimed. A named domain rule and actual server/CouchDB
 readback remain unimplemented; no copied neighbor row counts as full inference.
+
+* Canonical source persistence implementation
+The source Relation client and bounded server-backed startup snapshot now reuse
+server #290 conditional creation and authorized readback. Actual Docker server,
+CouchDB and SWI proof passed five tests including restart, replay, race, tenant
+isolation and full extension/provenance retention. Native server CI remains a
+separate gate. This does not complete inferred Claim or proactive expert agenda
+acceptance. See [[file:../../../../docs/canonical-readback.md][readback evidence]].

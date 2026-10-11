@@ -18,6 +18,11 @@ jobs:
           repository: lost-rob0t/star-lang
           ref: bfba04a15f43215cd323e1dde2d98a7343abb3ea
           path: .deps/star-lang
+      - uses: actions/checkout@v4
+        with:
+          repository: lost-rob0t/starintel-server
+          ref: 76dc103e52052e994b469800bacf6dc146ea9ebd
+          path: .deps/starintel-server
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -27,6 +32,7 @@ jobs:
       - name: Real pinned runtime, integration and regression gates
         env:
           STARLANG_ROOT: ${{ github.workspace }}/.deps/star-lang
+          STAR_KB_SERVER_ROOT: ${{ github.workspace }}/.deps/starintel-server
         run: |
           export KB_TEST_PYTHON="$(command -v python3)"
           nix develop ./.deps/star-lang --command bash -c '
@@ -37,6 +43,7 @@ jobs:
             "$STARLANG_SWI_EXECUTABLE" --version
             timeout 90 sbcl --noinform --disable-debugger --script service/worker.lisp < service/empty-snapshot.json
             "$KB_TEST_PYTHON" -m unittest discover -s tests -p "test_*.py" -v
+            "$KB_TEST_PYTHON" service/readback_integration.py
             "$KB_TEST_PYTHON" scripts/sync.py
             "$KB_TEST_PYTHON" scripts/sync.py --check
             "$KB_TEST_PYTHON" scripts/validate-docs.py
