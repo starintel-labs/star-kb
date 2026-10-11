@@ -49,3 +49,12 @@ thread eleven seconds; CLI and service cleanup attempt all resources before
 reporting errors. Real paused-SBCL/ZMQ regression reproduced the old failure and
 checks owned SWI/SBCL reaping. Fresh exact-head CI and independent review remain
 required; this correction does not authorize merge or advance persistence gates.
+
+** Canonical persistence/readback slice started
+Service PR #21 landed at d4afcac5b6bd51bb9f4d9652b790fe61faa90d9e after independent
+exact-head review; post-merge service CI passed all 118 tests. The separate
+feat/15-canonical-readback branch starts the next slice under #15, reusing server
+#290/#279. See [[file:../../../../docs/canonical-readback.md][canonical persistence/readback acceptance]].
+The current merging upsert needs an owner-side compare-or-create guard before
+immutable replay can be claimed. A named domain rule and actual server/CouchDB
+readback remain unimplemented; no copied neighbor row counts as full inference.
