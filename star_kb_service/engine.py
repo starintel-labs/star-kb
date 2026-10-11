@@ -115,14 +115,17 @@ class Engine:
             # with pidfd before signaling; do not kill unrelated process groups.
             owned = []
             for pid in self.session_pids(process.pid):
+                fd = None
                 try:
                     fd = os.pidfd_open(pid)
                     if os.getsid(pid) == process.pid:
                         signal.pidfd_send_signal(fd, signal.SIGKILL)
                         owned.append(pid)
-                    os.close(fd)
                 except ProcessLookupError:
                     pass
+                finally:
+                    if fd is not None:
+                        os.close(fd)
             process.wait(timeout=2)
             deadline = time.monotonic() + 2
             for pid in owned:

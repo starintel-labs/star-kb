@@ -8,9 +8,11 @@ permissions:
 jobs:
   real-swi-http-zmq:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: lost-rob0t/star-lang
@@ -19,27 +21,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install real runtimes
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sbcl swi-prolog-nox cl-bordeaux-threads cl-babel cl-ironclad cl-usocket cl-yason cl-fiveam
-          python3 -m pip install -r service/requirements.txt
-      - name: Integration and regression gates
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install Python clients
+        run: python3 -m pip install -r service/requirements.txt
+      - name: Real pinned runtime, integration and regression gates
         env:
           STARLANG_ROOT: ${{ github.workspace }}/.deps/star-lang
-          STAR_KB_SBCL: /usr/bin/sbcl
-          STARLANG_SWI_EXECUTABLE: /usr/bin/swipl
         run: |
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
-          python3 scripts/sync.py
-          python3 scripts/sync.py --check
-          python3 scripts/validate-docs.py
-      - name: Record bounded workload baseline
-        env:
-          STARLANG_ROOT: ${{ github.workspace }}/.deps/star-lang
-          STAR_KB_SBCL: /usr/bin/sbcl
-          STARLANG_SWI_EXECUTABLE: /usr/bin/swipl
-        run: python3 service/benchmark.py > benchmark.json
+          export KB_TEST_PYTHON="$(command -v python3)"
+          nix develop ./.deps/star-lang --command bash -c '
+            set -euo pipefail
+            export STAR_KB_SBCL="$(command -v sbcl)"
+            export CL_SOURCE_REGISTRY="$STARLANG_ROOT//:$CL_SOURCE_REGISTRY"
+            sbcl --version
+            "$STARLANG_SWI_EXECUTABLE" --version
+            timeout 90 sbcl --noinform --disable-debugger --script service/worker.lisp < service/empty-snapshot.json
+            "$KB_TEST_PYTHON" -m unittest discover -s tests -p "test_*.py" -v
+            "$KB_TEST_PYTHON" scripts/sync.py
+            "$KB_TEST_PYTHON" scripts/sync.py --check
+            "$KB_TEST_PYTHON" scripts/validate-docs.py
+            "$KB_TEST_PYTHON" service/benchmark.py > benchmark.json
+          '
       - uses: actions/upload-artifact@v4
         with:
           name: shared-service-evidence

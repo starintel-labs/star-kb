@@ -22,7 +22,7 @@ A killed Lisp supervisor can orphan its SWI child. Group termination alone did n
 A Debian runtime extracted without package post-install hooks needs make_library_index(swi(library)); otherwise MQI fails resolving uuid:option/3. This is environment setup, not an upstream adapter defect. No StarLang process-drain race fix was duplicated.
 
 * Verification and remaining gates
-Local real service suite: 8 tests passed after the reaping fix. Repository tests and exact-head CI evidence are recorded in the PR and service evidence note. No skipped or mock adapter test is counted as real integration.
+Local real service suite: 10 tests cover the reaping fix, query bounds and admission budgets. Repository tests and exact-head CI evidence are recorded in the PR and service evidence note. No skipped or mock adapter test is counted as real integration.
 
 Still open: generated actor/service wire binding, encrypted remote listeners, in-flight cancellation, canonical durable derived-document write/readback, proactive bounded expert agenda, RabbitMQ, and multi-node storage/partition/replay/convergence. The distributed node/placement/consistency proposal is explicit in the service contract, not an implementation claim. NLP classifications remain later scope.
 

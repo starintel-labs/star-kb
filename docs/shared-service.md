@@ -58,9 +58,11 @@ integration require separately tested semantic mappings.
 
 ## Run locally
 
-Install Python dependencies from `service/requirements.txt`, SBCL, SWI-Prolog
-(including MQI), and Lisp dependencies bordeaux-threads, babel, ironclad, usocket,
-yason (Debian/Ubuntu CL packages supply their transitive dependencies).
+Install Python dependencies from `service/requirements.txt`. Prefer the pinned
+StarLang `nix develop` environment for SBCL, SWI/MQI and Lisp dependencies.
+Debian SBCL 2.5.2/SWI 9.2.9 with bordeaux-threads, babel, ironclad, usocket and
+yason was tested locally. Ubuntu stock SBCL 2.2.9/SWI 9.0.4 failed adapter startup
+in the first CI attempt and is not a supported configuration for this slice.
 Check out the exact adapter commit in a separate clean directory.
 
 Set `STARLANG_ROOT`, `STAR_KB_SBCL`, `STARLANG_SWI_EXECUTABLE` to operator-owned
@@ -187,8 +189,8 @@ workload and consistency mode. None of these is marked complete by this PR.
 ## Verification
 
 Dedicated `shared-service` CI checks out the exact StarLang pin and installs real
-SBCL/SWI. The integration suite must not skip in that lane. Ordinary legacy CI
+SBCL/SWI from its existing flake lock. The integration suite must not skip in that lane. Ordinary legacy CI
 may report explicit skips if its runtime is absent. `service/benchmark.py` records
-a reproducible synthetic 32-relation/20-query baseline with cold projection/worker
-cost, warm latency/throughput, memory high-water marks and bounds. It is not a
+a reproducible synthetic 32-relation baseline (20 direct, 5 HTTP, 5 ZMQ query/next pairs) with cold projection/worker
+cost, warm latency/throughput, memory high-water marks and bounds. It measures fresh-client loopback RPC as well as direct dispatch; it is not a
 remote transport or cluster benchmark. No optimization claim precedes measurement.
