@@ -94,7 +94,8 @@ class Service:
         common = ("protocol", "id", "operation")
         if op == "health":
             closed(req, common)
-            return {"state": "ready", "generation": snapshot.generation,
+            live = engine.process is not None and engine.process.poll() is None
+            return {"state": "ready" if live else "degraded", "generation": snapshot.generation,
                     "scope": {"tenant": principal.tenant, "dataset": principal.dataset},
                     "adapterCommit": STARLANG_COMMIT, "schemaDigest": SCHEMA_HASH,
                     "durable": False, **engine.metadata}

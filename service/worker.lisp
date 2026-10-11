@@ -18,6 +18,7 @@
                    ((>= count 262144) (error "frame limit"))
                    (t (write-char c out))))))
 
+(defun run-worker ()
 (let* ((backend (starlogicadapterswi:make-swi-backend
                  :swipl-executable (uiop:getenv "STARLANG_SWI_EXECUTABLE")))
        (session (starlogicprotocol:open-logic-session backend "shared-kb")))
@@ -51,4 +52,11 @@
                  (t (emit (object "error" "invalid_request")))))
            (starlogicadapterswi::swi-query-limit-error () (emit (object "error" "query_limit")))
            (error () (emit (object "error" "engine_failure")))))
-    (starlogicprotocol:close-logic-session backend session)))
+    (starlogicprotocol:close-logic-session backend session))))
+
+(handler-case (run-worker)
+  (error (condition)
+    ;; Startup diagnostics reveal a condition TYPE only, never backend structs
+    ;; or MQI authentication material. RPC responses stay stable typed errors.
+    (format *error-output* "STAR_KB_STARTUP_ERROR=~A~%" (type-of condition))
+    (uiop:quit 1)))

@@ -35,7 +35,7 @@ def main():
             raise ValueError("duplicate credential")
         credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"])
     service = Service(credentials, engines)
-    http = zmq = None
+    http = zmq = thread = None
     stopped = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stopped.set())
@@ -49,7 +49,8 @@ def main():
         stopped.wait()
     finally:
         if http:
-            http.shutdown()
+            if thread is not None:
+                http.shutdown()
             http.server_close()
         if zmq:
             zmq.close()

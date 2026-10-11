@@ -140,6 +140,7 @@ class SharedServiceTests(unittest.TestCase):
         old = engine.process
         os.kill(old.pid, signal.SIGKILL)
         old.wait()
+        self.assertEqual("degraded", self.call(self.request("health"))["state"])
         pending = self.call(self.query())
         failed = self.call(self.request("next", handle=pending["handle"]))
         self.assertEqual("engine_failure", failed["error"])
@@ -209,3 +210,31 @@ class SharedServiceTests(unittest.TestCase):
         self.assertTrue(all(p.poll() is not None for p in processes))
         self.assertTrue(all(not Engine.session_pids(p.pid) for p in processes))
         self.assertEqual("service_closed", self.call(self.request("next", handle=pending["handle"]))["error"])
+
+    def test_answer_limit_and_prolog_looking_unicode_remains_data(self):
+        engine = self.engines[("a", "d")]
+        engine.close()
+        node = "雪\"),halt.\n"
+        docs = [document("r1"), document("r2")]
+        for doc in docs:
+            doc["source"]["id"] = node
+        engine.snapshot = Snapshot(self.root, "a", "d", docs)
+        engine.start()
+        pending = self.call(self.query(node=node, limits={"answers": 1}))
+        reply = self.call(self.request("next", handle=pending["handle"]))
+        self.assertEqual("query_limit", reply["error"])
+        self.assertNotIn("answers", reply)
+        pending = self.call(self.query(node=node))
+        reply = self.call(self.request("next", handle=pending["handle"]))
+        self.assertEqual("completed", reply["state"])
+        self.assertEqual([node, node], [r["source"] for r in reply["answers"]])
+        self.assertIsNone(engine.process.poll())
+
+    def test_replay_and_operation_memory_budgets(self):
+        for i in range(32):
+            pending = self.call(self.query())
+            self.assertEqual("pending", pending["state"])
+        self.assertEqual("operation_budget", self.call(self.query())["error"])
+        for i in range(128 - len(self.service.replay)):
+            self.assertEqual("ready", self.call(self.request("health"))["state"])
+        self.assertEqual("request_budget", self.call(self.request("health"))["error"])
