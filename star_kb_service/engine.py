@@ -8,7 +8,7 @@ import signal
 import subprocess
 import time
 from .contracts import Fault, encode, decode, MAX_BYTES
-from .projection import STARLANG_COMMIT
+from .identity import verify_adapter_source
 from .contracts import ENGINE_EOF_SECONDS, ENGINE_WAIT_SECONDS, ENGINE_REAP_SECONDS
 
 
@@ -20,10 +20,7 @@ class Engine:
             raise Fault("unsupported_supervision_platform")
         self.starlang = Path(starlang).resolve()
         self.sbcl, self.swipl = str(Path(sbcl).resolve()), str(Path(swipl).resolve())
-        head = subprocess.check_output(["git", "-C", str(self.starlang), "rev-parse", "HEAD"], text=True).strip()
-        dirty = subprocess.check_output(["git", "-C", str(self.starlang), "status", "--porcelain", "--untracked-files=no"])
-        if head != STARLANG_COMMIT or dirty:
-            raise Fault("adapter_pin_mismatch")
+        verify_adapter_source(self.starlang)
         self.snapshot = snapshot
         self.process = None
         self.metadata = {}
