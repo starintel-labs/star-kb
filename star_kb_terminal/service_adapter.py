@@ -139,6 +139,10 @@ class ServiceEngine:
                 or not isinstance(reply.get('plan'), dict)
                 or any(not isinstance(x, str) for x in results + unresolved)):
             raise ValueError('invalid engine goal evidence')
+        if reply['state'] == 'failed' and (not isinstance(reply.get('error'), str) or not reply['error']):
+            raise ValueError('failed goal requires an explicit error')
+        if reply['state'] == 'completed' and reply.get('error') is not None:
+            raise ValueError('completed goal cannot contain an error')
         if reply['state'] == 'completed' and unresolved:
             raise ValueError('completed goal has unresolved effects')
         state = reply['state']
