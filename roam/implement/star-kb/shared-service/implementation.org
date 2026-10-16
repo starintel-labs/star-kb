@@ -81,3 +81,63 @@ The separate installed-service slice consumes that output, refreshes the exact
 source inventory, and adds actual installed CLI plus HTTP/ZMQ lifecycle checks.
 Canonical schema hashes and service capabilities remain unchanged. Exact-head
 installed-package CI and independent review are required before completion.
+
+* Bounded proactive goals (2026-10-16)
+** Authority and scope
+The user's 2026-10-16 delegated instruction explicitly expands this implementation
+beyond the collector repair to a minimal proactive engine. This is execution
+authorization for this bounded slice, not an invented approval of the entire
+research roadmap. Existing design and architecture remain at
+[[id:star-kb-prolog-kb-query-server-design]] and [[id:star-kb-dialect-and-kb-research]].
+The operator terminal is separately owned and is not implemented here.
+
+** Contract and architecture
+[[file:../../../../docs/proactive-goals.md][The goal interface contract]] describes
+library and HTTP/ZMQ operations, operator actor selection, typed two-edge
+subsidiary inference, provenance, trust policy, bounds and uncertain outcomes.
+Canonical Task plans/journals remain in the existing server. Source Relation
+snapshots use the pinned 0.10.1 generated schema and actual StarLang SWI bridge.
+Candidate Claims use conditional creation; Target effects use the existing
+=/api/v1/targets= durable acceptance/scheduling bridge with authorized readback.
+No replacement truth store or queue is introduced.
+
+** Runtime invariants
+SWI returns =no-answer= at leaves; this is a valid empty query, not a query limit.
+The join compares endpoint schema identities as well as bare IDs. Generated,
+candidate and rejected inputs cannot recursively become source truth. Journal
+payloads require validation even though they are schema-valid canonical Tasks.
+Request replay and goal replay are distinct: a fresh service request ID is needed
+to obtain a fresh status while the durable goal identity remains unchanged.
+
+A reserved attempt can crash after an effect commits. Durable effect plans and
+receipts expose partial results and unknown effects. Three attempts are bounded;
+a final lost Target acknowledgment requires explicit reconciliation by a new
+goal with identical effect keys. No exactly-once actor execution or atomic batch
+is claimed. Source revision fencing remains optimistic, not transactional.
+
+** Verification
+Policy/schema fixtures and actual SBCL/SWI over an isolated HTTP protocol fixture
+are in =tests/test_proactive.py=. The disposable server/CouchDB harness adds
+actual claim and Target acceptance readback with commit-before-ack injection.
+Exact commands, results and infrastructure failures must be recorded in the PR.
+A fixture server is not actual durable server evidence.
+
+** Approval Table
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Execution | Project owner | APPROVED | Explicit expanded instruction | 2026-10-16 delegated user task |
+| Verification | Maintainer | PENDING | Exact-head tests and independent review | Implementation PR |
+| Deployment | Project owner | NOT STARTED | Separate request | Not requested |
+
+** Changelog
+- 2026-10-16 :: Added minimal proactive goal interface and explicit remaining durability/automation boundaries.
+
+** Actual Target acceptance boundary correction
+The real server integration exposed that =/api/v1/targets= stores a durable
+acceptance with a nested Target, not a standalone document retrievable through
+=/api/v1/documents/:target_id=. The first HTTP fixture incorrectly materialized
+that row. Queue results now identify a canonical Task receipt retaining the
+stable acceptance IDs and full logical Target/provenance. Receipt normalization
+omits dynamic correlation and accepted/duplicate disposition. Retrying the same
+idempotency key resolves an uncertain acceptance without creating another queue
+or pretending actor execution completed. The fixture now mirrors this boundary.

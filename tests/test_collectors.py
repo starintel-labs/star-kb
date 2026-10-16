@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -203,6 +204,83 @@ class ProjectionContractTests(unittest.TestCase):
                 f"(star_json:star_source(_, 'raw:fixture-rss', _, _, _, _, '{raw_hash}') -> halt(0); halt(1))"
             )
             self.assertTrue(swipl_succeeds(goal), f"SWI-Prolog query failed: {goal}")
+
+
+class CollectorProjectionCliTests(unittest.TestCase):
+    def project(self, source, output, *flags):
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tools/prolog-star-kb"), "project",
+             str(source), "-o", str(output), *flags],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+
+    def test_offline_collectors_create_nested_projection_and_repeat(self):
+        for source_id in enabled_source_ids(REGISTRY):
+            with self.subTest(source_id=source_id), tempfile.TemporaryDirectory() as td:
+                result = run_source(REGISTRY, source_id, td, retrieved_at=RETRIEVED_AT)
+                source = Path(result["normalized_path"])
+                raw_before = Path(result["raw_path"]).read_bytes()
+                normalized_before = source.read_bytes()
+                output = Path(td) / source_id / "projection" / "nested" / "facts.pl"
+                self.assertFalse(output.parent.exists())
+                stdout = subprocess.run(
+                    [sys.executable, str(ROOT / "tools/prolog-star-kb"), "project", str(source)],
+                    cwd=ROOT, capture_output=True, text=True, check=True,
+                ).stdout
+                first = self.project(source, output)
+                self.assertEqual(0, first.returncode, first.stderr)
+                self.assertEqual(stdout, output.read_text())
+                self.assertIn("star_doc(", stdout)
+                self.assertIn("star_source(", stdout)
+                self.assertIn(result["raw_sha256"], stdout)
+                sibling = output.parent / "keep.txt"
+                sibling.write_bytes(b"preserve existing content")
+                second = self.project(source, output)
+                self.assertEqual(0, second.returncode, second.stderr)
+                self.assertEqual(stdout, output.read_text())
+                self.assertEqual(b"preserve existing content", sibling.read_bytes())
+                self.assertEqual(raw_before, Path(result["raw_path"]).read_bytes())
+                self.assertEqual(normalized_before, source.read_bytes())
+
+    def test_whole_json_and_forced_stream_create_parents_without_changing_facts(self):
+        spec = next(s for s in load_registry(REGISTRY) if s.source_id == "fixture-atom")
+        _, documents = RssAtomCollector().collect(spec, retrieved_at=RETRIEVED_AT)
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "input.json"
+            for streaming in (False, True):
+                source.write_text(ndjson_bytes(documents).decode() if streaming else json.dumps(documents, indent=2))
+                output = Path(td) / str(streaming) / "nested" / "facts.pl"
+                result = self.project(source, output, *(["--stream"] if streaming else []))
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(render_projection(documents), output.read_text())
+
+    def test_invalid_parent_and_directory_output_fail_without_removing_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_source(REGISTRY, "fixture-atom", td, retrieved_at=RETRIEVED_AT)
+            blocker = Path(td) / "blocker"
+            blocker.write_bytes(b"keep")
+            for output in (blocker / "nested" / "facts.pl", Path(td)):
+                run = self.project(result["normalized_path"], output)
+                self.assertNotEqual(0, run.returncode)
+                self.assertIn("cannot write projection", run.stderr)
+                self.assertIn(str(output), run.stderr)
+                self.assertNotIn("Traceback", run.stderr)
+                self.assertEqual(b"keep", blocker.read_bytes())
+
+    def test_permission_failure_is_not_swallowed(self):
+        # Inject OS errors so this regression also runs under privileged CI users.
+        from prolog_star_kb.cli import main
+        with tempfile.TemporaryDirectory() as td:
+            result = run_source(REGISTRY, "fixture-atom", td, retrieved_at=RETRIEVED_AT)
+            output = Path(td) / "facts.pl"
+            source = Path(result["normalized_path"])
+            source.write_text(json.dumps(json.loads(source.read_text()), indent=2))
+            output.write_bytes(b"keep")
+            for operation in ("mkdir", "open"):
+                with patch.object(Path, operation, side_effect=PermissionError(13, "Permission denied", str(output))):
+                    with self.assertRaisesRegex(SystemExit, "cannot write projection.*Permission denied"):
+                        main(["project", result["normalized_path"], "-o", str(output)])
+                self.assertEqual(b"keep", output.read_bytes())
 
 
 class WorkflowStaticTests(unittest.TestCase):

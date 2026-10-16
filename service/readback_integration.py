@@ -121,7 +121,7 @@ class DurableReadback(unittest.TestCase):
         for scope in ("a", "b"):
             status, result = http(cls.url + "/auth/credentials", "POST",
                 {"owner": "kb-proof-" + scope, "principal_type": "api_client",
-                 "scopes": ["documents:read", "documents:write", "tenant:tenant-" + scope, "dataset:proof-" + scope]}, cls.admin)
+                 "scopes": ["documents:read", "documents:write", "targets:dispatch", "actor:fixture-corroborator", "tenant:tenant-" + scope, "dataset:proof-" + scope]}, cls.admin)
             if status not in (200, 201):
                 raise RuntimeError("Credential creation failed: " + str(status))
             cls.tokens[scope] = result["api_key"]
@@ -261,6 +261,88 @@ class DurableReadback(unittest.TestCase):
         self.assertIn("durable_replay_conflict", outcomes)
         winner = next(x for x in outcomes if isinstance(x, dict))
         self.assertEqual(winner, self.client().read("proof:race"))
+
+    def test_05_proactive_claim_restart_and_commit_before_ack(self):
+        from star_kb_service.proactive import ProactiveEngine, RULE
+        client = ServerDocuments(self.root, "tenant-a", "proof-a", self.url, self.tokens["a"],
+                                 allowed_types=("relation", "task", "claim", "target"))
+        for identifier, source, destination in (("proof:chain-ab", "org:a", "org:b"),
+                                                ("proof:chain-bc", "org:b", "org:c")):
+            document = self.document(identifier)
+            document.update(source={"schema": "organization", "id": source},
+                            destination={"schema": "organization", "id": destination}, predicate="subsidiary-of")
+            client.create(document)
+        factory = lambda snapshot: Engine(self.root, os.environ["STAR_KB_SBCL"],
+                                           os.environ["STARLANG_SWI_EXECUTABLE"], snapshot)
+        agenda = ProactiveEngine(client, factory)
+        agenda.submit("durable-chain", ["proof:chain-ab", "proof:chain-bc"], RULE)
+        original = client.create
+        lost = []
+        def uncertain(document, seconds=5):
+            result = original(document, seconds)
+            if document["dtype"] == "claim" and not lost:
+                lost.append(result)
+                raise Fault("store_unavailable")  # committed server write, lost acknowledgment
+            return result
+        client.create = uncertain
+        self.assertEqual("pending", agenda.advance("durable-chain")["state"])
+        docker("stop", "-t", "15", self.server)
+        docker("restart", "-t", "15", self.couch)
+        self.wait_couch()
+        docker("start", self.server)
+        self.wait_server()
+        fresh = ServerDocuments(self.root, "tenant-a", "proof-a", self.url, self.tokens["a"],
+                                allowed_types=("relation", "task", "claim", "target"))
+        resumed = ProactiveEngine(fresh, factory).advance("durable-chain")
+        self.assertEqual("completed", resumed["state"])
+        self.assertEqual([lost[0]["id"]], resumed["results"])
+        self.assertEqual(lost[0], fresh.read(resumed["results"][0]))
+        self.assertEqual("indirect-subsidiary-of", lost[0]["predicate"])
+        self.assertEqual("candidate", lost[0]["status"])
+
+    def test_06_proactive_target_uses_durable_acceptance_bridge(self):
+        from star_kb_service.proactive import ProactiveEngine
+        client = ServerDocuments(self.root, "tenant-a", "proof-a", self.url, self.tokens["a"],
+                                 allowed_types=("relation", "task", "claim", "target"))
+        for identifier, source, destination in (("proof:target-ab", "org:x", "org:y"),
+                                                ("proof:target-bc", "org:y", "org:z")):
+            document = self.document(identifier)
+            document.update(source={"schema": "organization", "id": source},
+                            destination={"schema": "organization", "id": destination}, predicate="subsidiary-of")
+            client.create(document)
+        capability = "corroborate-subsidiary/1"
+        actors = {"fixture-corroborator": [capability]}
+        factory = lambda snapshot: Engine(self.root, os.environ["STAR_KB_SBCL"],
+                                           os.environ["STARLANG_SWI_EXECUTABLE"], snapshot)
+        agenda = ProactiveEngine(client, factory, actors)
+        sources = ["proof:target-ab", "proof:target-bc"]
+        agenda.submit("durable-target", sources, capability, "fixture-corroborator")
+        original = client.queue_target
+        lost = []
+        def uncertain(document, seconds=5):
+            result = original(document, seconds)
+            if not lost:
+                lost.append(result)
+                raise Fault("store_unavailable")
+            return result
+        client.queue_target = uncertain
+        pending = agenda.advance("durable-target")
+        self.assertEqual("pending", pending["state"])
+        self.assertEqual(1, len(pending["unresolvedEffects"]))
+        self.assertEqual(1, len(lost), "Target bridge must accept before the injected lost acknowledgment")
+        resumed = ProactiveEngine(client, factory, actors).advance("durable-target")
+        self.assertEqual("completed", resumed["state"])
+        self.assertEqual(1, len(resumed["results"]))
+        receipt = client.read(resumed["results"][0])
+        self.assertEqual("task", receipt["dtype"])
+        self.assertEqual([lost[0]["id"]], receipt["resultIds"])
+        self.assertEqual(lost[0]["acceptance"], receipt["extensions"]["starKbGoal"]["acceptance"])
+        self.assertEqual("accepted", receipt["extensions"]["starKbGoal"]["state"])
+        effect = receipt["extensions"]["starKbGoal"]["effect"]
+        self.assertEqual("fixture-corroborator", effect["actor"])
+        self.assertTrue(effect["provenance"]["derived"])
+        # The isolated actor name has no live collector bound: proof covers
+        # durable acceptance/scheduling, not a live investigation or execution.
 
     def test_04_invalid_canonical_source_rejected_before_write(self):
         source = self.document("proof:invalid")
