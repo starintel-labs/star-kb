@@ -131,3 +131,13 @@ A fixture server is not actual durable server evidence.
 
 ** Changelog
 - 2026-10-16 :: Added minimal proactive goal interface and explicit remaining durability/automation boundaries.
+
+** Actual Target acceptance boundary correction
+The real server integration exposed that =/api/v1/targets= stores a durable
+acceptance with a nested Target, not a standalone document retrievable through
+=/api/v1/documents/:target_id=. The first HTTP fixture incorrectly materialized
+that row. Queue results now identify a canonical Task receipt retaining the
+stable acceptance IDs and full logical Target/provenance. Receipt normalization
+omits dynamic correlation and accepted/duplicate disposition. Retrying the same
+idempotency key resolves an uncertain acceptance without creating another queue
+or pretending actor execution completed. The fixture now mirrors this boundary.

@@ -123,7 +123,7 @@ class ProactiveEngine:
             if (record["dtype"] != "task" or record["taskType"] != "star-kb-goal/1"
                     or record["id"] != identifier):
                 raise Fault("invalid_goal_record")
-            payload = closed(record["extensions"]["starKbGoal"], fields)
+            payload = closed(record["extensions"]["starKbGoal"], fields, ("acceptance", "effect") if ":effect:" in identifier else ())
             results = record["resultIds"]
             if not isinstance(results, list) or len(results) > MAX_RESULTS:
                 raise Fault("invalid_goal_record")
@@ -137,6 +137,15 @@ class ProactiveEngine:
                 raise Fault("invalid_goal_record")
             if "error" in payload:
                 string(payload["error"])
+            if "acceptance" in payload:
+                acceptance = closed(payload["acceptance"], ("requestId", "targetId"))
+                string(acceptance["requestId"])
+                string(acceptance["targetId"])
+                self.store.validate(payload["effect"])
+                if payload["effect"].get("dtype") != "target":
+                    raise Fault("invalid_goal_record")
+                if results != [acceptance["targetId"]]:
+                    raise Fault("invalid_goal_record")
             if "effects" in payload:
                 if not isinstance(payload["effects"], list) or len(payload["effects"]) > MAX_RESULTS:
                     raise Fault("invalid_goal_record")
@@ -173,19 +182,20 @@ class ProactiveEngine:
             if receipt:
                 if receipt["extensions"]["starKbGoal"]["state"] != "accepted" or len(receipt["resultIds"]) != 1:
                     raise Fault("invalid_goal_record")
-            result_id = receipt["resultIds"][0] if receipt else effect["id"] if effect["dtype"] == "claim" else None
-            stored = self._read(result_id, deadline, True) if result_id else None
-            if stored:
-                if effect["dtype"] == "claim":
-                    if {k: v for k, v in stored.items() if k != "rev"} != effect:
-                        raise Fault("durable_replay_conflict")
+            if effect["dtype"] == "target":
+                if receipt:
+                    if ("acceptance" not in receipt["extensions"]["starKbGoal"]
+                            or receipt["extensions"]["starKbGoal"].get("effect") != effect):
+                        raise Fault("invalid_goal_record")
+                    observed.append(receipt["id"])
                 else:
-                    expected = {"provenance": effect["provenance"], "sources": effect["sources"],
-                                "verificationStatus": "candidate", "logicalId": effect["id"]}
-                    if (stored.get("dtype") != "target" or stored.get("actor") != effect["actor"]
-                            or stored.get("target") != effect["target"]
-                            or stored.get("options", {}).get("starKbDerivation") != expected):
-                        raise Fault("durable_replay_conflict")
+                    unresolved.append(effect["id"])
+                continue
+            result_id = receipt["resultIds"][0] if receipt else effect["id"]
+            stored = self._read(result_id, deadline, True)
+            if stored:
+                if {k: v for k, v in stored.items() if k != "rev"} != effect:
+                    raise Fault("durable_replay_conflict")
                 observed.append(result_id)
             else:
                 unresolved.append(effect["id"])
@@ -244,9 +254,14 @@ class ProactiveEngine:
                     stored = self.store.queue_target(document, seconds=min(5, remaining))
                 else:
                     stored = self._create(document, deadline)
-                results.append(stored["id"])
+                receipt_id = identifier + ":effect:" + str(index)
+                results.append(receipt_id if document["dtype"] == "target" else stored["id"])
+                receipt = {"state": "accepted"}
+                if document["dtype"] == "target":
+                    receipt["acceptance"] = stored["acceptance"]
+                    receipt["effect"] = document
                 self._create(self._task(identifier + ":effect:" + str(index),
-                                        {"state": "accepted"}, [stored["id"]]), deadline)
+                                        receipt, [stored["id"]]), deadline)
             self._create(self._task(identifier + ":done", {"state": "completed"}, results), deadline)
         except Fault as exc:
             if exc.code not in TRANSIENT or attempt == MAX_ATTEMPTS:

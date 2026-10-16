@@ -39,7 +39,11 @@ status/advance calls: the existing per-session replay cache returns the original
 reply for repeated request IDs. Responses contain `state`, `goal`, `plan`,
 `attempts`, `results` (canonical IDs), `unresolvedEffects` (logical IDs with an
 unknown/no acknowledged effect), and nullable `error`. Fetch result documents
-through the existing authorized canonical server read interface.
+through the existing authorized canonical server read interface. Claim results
+identify the Claim. Target results identify the canonical effect-receipt Task,
+which retains the accepted server Target ID in `resultIds` and stable
+`extensions.starKbGoal.acceptance` (`requestId`, `targetId`), together with the
+complete logical Target/evidence in `extensions.starKbGoal.effect`.
 
 ## Named rule and trust boundary
 
@@ -57,8 +61,13 @@ SWI supplies the bounded named relation query; Python composes the typed join.
 explicitly allowlisted actor. It submits through `POST /api/v1/targets`, reusing
 the server's durable idempotency/acceptance/scheduling owner. The server owns the
 canonical Target ID and execution state. Complete derivation provenance and
-source references travel in canonical `options.starKbDerivation` and survive
-authorized readback. Plain document creation is not used to fake queueing.
+source references travel in canonical `options.starKbDerivation` within the
+server's durable acceptance record. The bridge stores a nested Target; it does
+not create a standalone `/api/v1/documents/:target_id` row. The engine records
+normalized acceptance in a canonical Task and verifies that Task through
+authorized readback. Dynamic correlation IDs and accepted-versus-duplicate
+response dispositions are excluded from immutable receipt identity. Plain
+document creation is not used to fake queueing.
 Actor execution and completion are separate from goal effect acceptance.
 
 Inputs are directed, undeleted, revisioned 0.10.1 Relations from the authorized
