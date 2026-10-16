@@ -71,6 +71,10 @@ class TerminalDurableReadback(harness.DurableReadback):
             harness.docker('stop', '-t', '15', self.server)
             harness.docker('restart', '-t', '15', self.couch)
             self.wait_couch(); harness.docker('start', self.server); self.wait_server()
+            # Docker can reassign its ephemeral host port across stop/start.
+            client = ServerDocuments(self.root, 'tenant-a', 'proof-a', self.url, self.tokens['a'],
+                                     allowed_types=('relation', 'task', 'claim', 'target'))
+            base[base.index('--results-url') + 1] = self.url
             service.proactive[('tenant-a', 'proof-a')] = ProactiveEngine(client, factory)
             self.assertEqual(before, call('results', key))
             self.assertEqual('completed', call('advance', key)['state'])
