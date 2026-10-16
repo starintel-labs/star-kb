@@ -1,0 +1,51 @@
+#+title: Reusable symbolic-investigation expert for StarLang actors
+#+description: Draft, bounded candidate-only Prolog expert and public actor integration boundaries.
+#+status: proposed
+#+filetags: :star-kb:design:actors:symbolic:
+:PROPERTIES:
+:ID: star-kb-symbolic-investigation-expert
+:END:
+
+* Scope
+Owner directive on 2026-10-16: wire the StarLang + Star-KB actor ideas into
+starintel-labs/starintel-actors, keeping reusable Prolog reasoning in Star-KB.
+This is an opt-in implementation candidate in a draft PR; it is not enabled as
+a remote service operation or a new canonical ontology. The public actor roster
+and runtime packaging remain in starintel-labs/starintel-actors issue #4.
+
+* Verified foundations
+- =kb/core/star_json.pl= holds dynamic facts derived from the existing projector.
+- =kb/core/star_reasoning.pl= already owns =tool_contradictions/2= and
+  =tool_why_not/4=. Do not reimplement them.
+- =star-kb#15= owns the bounded shared service; =star-kb#6= owns mining.
+- =star-kb#27= adds a proactive-goals implementation, pending merge.
+- Present projection compatibility with flat canonical 0.10.1 must be tested
+  independently. An example using =star_relation/9= does not prove it.
+
+* Candidate expert design
+- Expose an opt-in read-only module with a fixed narrow operation inventory.
+- Enumerate strictly typed positive =owns= edges into two-hop proof candidates
+  with both source relation IDs, never =related-to= or actual legal control.
+- Link source/evidence IDs; classify disagreements and missing evidence for review.
+- Bounded enumeration, no caller-supplied Prolog text, no network or write effects.
+- Actors consume through future approved named KB tools or trusted local bindings.
+  Do not create a parallel controller, target scheduler, registry or document writer.
+
+* Explicit gates
+- No automatic canonical promotion: candidates are review-only by construction.
+- No person-identity guess, external-source bulk ingestion, live surveillance,
+  arbitrary Prolog RPC, or self-authorized actor activation in this slice.
+- Any new remote operation or StarLang wire representation requires the
+  canonical design/contract review, generated fixtures and end-to-end tests.
+- Review API compatibility and actual SWI runtime tests before merge.
+
+* Approval Table
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Research | Project owner | PENDING | Review new expert scope and dependencies | star-kb#29 |
+| Design | Project owner | PENDING | Review exports, invariants and actor ownership | draft PR |
+| Execution | Project owner | PENDING | Approval to activate/release reusable expert | draft PR |
+| Verification | Repository maintainer | PENDING | Exact-head SWI and integration tests | CI |
+
+* Changelog
+- 2026-10-16 :: Drafted an opt-in, read-only candidate expert and public-actor ownership handoff.
