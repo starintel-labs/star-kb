@@ -10,6 +10,7 @@ from .contracts import closed
 from .engine import Engine
 from .projection import Snapshot
 from .persistence import ServerDocuments
+from .proactive import ProactiveEngine
 from .runtime import Principal, Service
 from .transports import http_server, ZmqServer
 
@@ -43,8 +44,9 @@ def configured_service(config, root):
     """Release earlier workers when a later scope or credential fails startup."""
     with ExitStack() as owned:
         engines = {}
+        proactive = {}
         for scope in config["scopes"]:
-            closed(scope, ("tenant", "dataset"), ("documents", "server"))
+            closed(scope, ("tenant", "dataset"), ("documents", "server", "proactive"))
             key = scope["tenant"], scope["dataset"]
             if key in engines:
                 raise ValueError("duplicate scope")
@@ -55,6 +57,15 @@ def configured_service(config, root):
                 snapshot = ServerDocuments(root, *key, store["url"], os.environ[store["tokenEnv"]]).snapshot(store["documentIds"])
             else:
                 snapshot = Snapshot(root, *key, scope["documents"])
+            if "proactive" in scope:
+                if "server" not in scope:
+                    raise ValueError("proactive goals require canonical server")
+                options = closed(scope["proactive"], ("actors",))
+                client = ServerDocuments(root, *key, store["url"], os.environ[store["tokenEnv"]],
+                                         allowed_types=("relation", "task", "claim", "target"))
+                proactive[key] = ProactiveEngine(client,
+                    lambda snap: Engine(root, os.environ["STAR_KB_SBCL"], os.environ["STARLANG_SWI_EXECUTABLE"], snap),
+                    options["actors"])
             engines[key] = Engine(root, os.environ["STAR_KB_SBCL"], os.environ["STARLANG_SWI_EXECUTABLE"], snapshot)
             owned.callback(engines[key].close)
         credentials = {}
@@ -64,7 +75,7 @@ def configured_service(config, root):
             if token in credentials:
                 raise ValueError("duplicate credential")
             credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"])
-        service = Service(credentials, engines)
+        service = Service(credentials, engines, proactive=proactive)
         owned.pop_all()
         return service
 

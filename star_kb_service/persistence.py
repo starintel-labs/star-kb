@@ -38,7 +38,7 @@ class DeadlineSocket(socket.socket):
 
 
 class ServerDocuments:
-    def __init__(self, starlang, tenant, dataset, url, token):
+    def __init__(self, starlang, tenant, dataset, url, token, allowed_types=("relation",)):
         self.starlang, self.tenant, self.dataset = starlang, string(tenant), string(dataset)
         parsed = urlsplit(url)
         if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
@@ -53,16 +53,21 @@ class ServerDocuments:
             if hashlib.sha256((base / path).read_bytes()).hexdigest() != digest:
                 raise Fault("contract_mismatch")
         schema = json.loads((base / "generated/schema.json").read_bytes())
-        self.validator = Draft202012Validator({"$ref": "#/$defs/Relation", "$defs": schema["$defs"]})
+        names = {"relation": "Relation", "claim": "Claim", "target": "Target", "task": "Task"}
+        if not allowed_types or set(allowed_types) - names.keys():
+            raise Fault("invalid_store_configuration")
+        self.validators = {kind: Draft202012Validator(
+            {"$ref": "#/$defs/" + names[kind], "$defs": schema["$defs"]})
+            for kind in allowed_types}
 
     def validate(self, document, revision=False):
         if not isinstance(document, dict) or len(encode(document)) > MAX_BYTES:
             raise Fault("invalid_canonical_document")
-        if not self.validator.is_valid(document):
+        if document.get("dtype") not in self.validators or not self.validators[document["dtype"]].is_valid(document):
             raise Fault("invalid_canonical_document")
-        if (document.get("schemaVersion") != "0.10.1" or document.get("dtype") != "relation"
+        if (document.get("schemaVersion") != "0.10.1"
                 or document.get("dataset") != self.dataset or document.get("deleted", False)
-                or document.get("direction", "directed") != "directed"):
+                or (document.get("dtype") == "relation" and document.get("direction", "directed") != "directed")):
             raise Fault("unsupported_projection")
         string(document["id"])
         if revision:
@@ -102,7 +107,9 @@ class ServerDocuments:
                     raise Fault("store_response_limit")
             if response.status in (401, 403):
                 raise Fault("store_unauthorized")
-            if response.status not in (200, 201, 412):
+            if response.status == 409:
+                raise Fault("durable_replay_conflict")
+            if response.status not in (200, 201, 404, 412):
                 raise Fault("store_failure")
             return response.status, decode(bytes(body))
         except (OSError, http.client.HTTPException):
@@ -112,10 +119,12 @@ class ServerDocuments:
                 response.close()
             connection.close()
 
-    def read(self, identifier, deadline=None):
+    def read(self, identifier, deadline=None, optional=False):
         deadline = deadline if deadline is not None else time.monotonic() + 5
         string(identifier)
         status, document = self.request("GET", "/api/v1/documents/" + quote(identifier, safe=""), deadline)
+        if status == 404 and optional:
+            return None
         if status != 200:
             raise Fault("store_failure")
         document = self.validate(document, revision=True)
@@ -143,6 +152,34 @@ class ServerDocuments:
         stored = self.read(document["id"], deadline)
         content = {k: v for k, v in stored.items() if k != "rev"}
         if encode(content) != encode(document):
+            raise Fault("durable_replay_conflict")
+        return stored
+
+    def queue_target(self, document, seconds=5):
+        """Use the server's durable acceptance/scheduling bridge, not a plain PUT.
+
+        The server owns Target IDs, timestamps and execution state. Its stable
+        idempotency ledger resolves commit-before-ack and scheduler restart.
+        Provenance travels losslessly in canonical Target options.
+        """
+        if type(seconds) not in (int, float) or not 0 < seconds <= 5:
+            raise Fault("invalid_request")
+        document = self.validate(document)
+        if document["dtype"] != "target" or "rev" in document:
+            raise Fault("invalid_canonical_document")
+        deadline = time.monotonic() + seconds
+        options = {**document.get("options", {}), "starKbDerivation": {
+            "provenance": document["provenance"], "sources": document["sources"],
+            "verificationStatus": "candidate", "logicalId": document["id"]}}
+        request = {"actor": document["actor"], "target": document["target"],
+                   "dataset": self.dataset, "idempotency_key": document["id"],
+                   "delay": 1, "recurring": False, "options": options}
+        status, receipt = self.request("POST", "/api/v1/targets", deadline, request)
+        if status not in (200, 201) or receipt.get("status") not in ("accepted", "duplicate"):
+            raise Fault("store_contract_mismatch")
+        stored = self.read(string(receipt.get("target_id")), deadline)
+        if (stored.get("dtype") != "target" or stored.get("actor") != document["actor"]
+                or stored.get("target") != document["target"] or stored.get("options") != options):
             raise Fault("durable_replay_conflict")
         return stored
 

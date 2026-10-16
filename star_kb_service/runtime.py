@@ -18,7 +18,7 @@ class Principal:
 
 
 class Service:
-    def __init__(self, credentials, engines):
+    def __init__(self, credentials, engines, proactive=None):
         # Credentials arrive from operator environment/keyring only. Scope is
         # supplied by trusted catalog configuration, never the request body.
         if not credentials or len(credentials) > 64 or not engines or len(engines) > 16:
@@ -32,6 +32,7 @@ class Service:
             if (principal.tenant, principal.dataset) not in engines:
                 raise ValueError("unknown credential scope")
         self.engines = dict(engines)
+        self.proactive = dict(proactive or {})
         self.replay = {}
         self.operations = {}
         self.lock = threading.Lock()
@@ -93,6 +94,19 @@ class Service:
         snapshot = engine.snapshot
         op = req["operation"]
         common = ("protocol", "id", "operation")
+        if op in ("actor-capabilities", "goal-submit", "goal-status", "goal-advance"):
+            agenda = self.proactive.get((principal.tenant, principal.dataset))
+            if agenda is None:
+                raise Fault("proactive_unconfigured")
+            if op == "actor-capabilities":
+                closed(req, common)
+                return {"state": "ready", **agenda.capabilities()}
+            closed(req, (*common, "parameters"))
+            if op == "goal-submit":
+                params = closed(req["parameters"], ("goal", "sources", "capability"), ("actor",))
+                return agenda.submit(params["goal"], params["sources"], params["capability"], params.get("actor"))
+            params = closed(req["parameters"], ("goal",))
+            return (agenda.status if op == "goal-status" else agenda.advance)(params["goal"])
         if op == "health":
             closed(req, common)
             live = engine.process is not None and engine.process.poll() is None
