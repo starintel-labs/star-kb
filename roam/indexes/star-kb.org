@@ -24,6 +24,9 @@ No bulk real-world ingestion is authorized in this slice.
 * Implementation branch
 - =feature/prolog-star-kb-projection=
 
+* Proposed symbolic actor expert
+- [[file:../design/star-kb/symbolic-investigation-expert.org][Symbolic investigation expert (review pending)]]
+
 * Roadmap
 1. Verify deterministic JSON -> Prolog projection and safe AI tool compiler.
 2. Add SWI-Prolog CI smoke coverage.
