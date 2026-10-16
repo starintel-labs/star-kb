@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from star_kb_terminal.cli import main
+raise SystemExit(main())
