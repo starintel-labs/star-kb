@@ -6,7 +6,6 @@
             evidence_coverage/2
           ]).
 
-:- use_module(library(solution_sequences), [findnsols/4]).
 :- use_module('../../core/star_json',
               [star_relation/9, star_source/7, star_evidence/7]).
 :- use_module('../../core/star_reasoning',
@@ -109,5 +108,5 @@ frontier_question(Subject, Predicate, Object,
     Predicate \= '',
     Predicate \= 'related-to',
     Predicate \= related_to,
-    tool_why_not(Subject, Predicate, Object,
-                 missing_direct_relation(Subject, Predicate, Object)).
+    tool_why_not(Subject, Predicate, Object, Verdict),
+    Verdict = missing_direct_relation(Subject, Predicate, Object).
