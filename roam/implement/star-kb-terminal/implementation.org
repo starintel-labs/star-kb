@@ -1,0 +1,39 @@
+#+title: Prolog operator terminal implementation
+#+description: Isolated operator client, registry-derived planning and honest engine status boundary.
+#+status: draft
+#+filetags: :star-kb:implementation:terminal:prolog:
+:PROPERTIES:
+:ID: star-kb-operator-terminal-implementation
+:END:
+
+* Scope and authority
+The user explicitly authorized PR two on 2026-10-16: original Prolog operator
+terminal code, separate from collector repair and proactive engine task
+01a14593-c522-76c8-9ac8-7efa043950f2. This request authorizes this bounded new slice
+beyond the older project-index implementation text. No deployment, live
+investigation, secrets, collector edits or canonical publication.
+
+* Design and implementation
+See [[file:../../../docs/operator-terminal.md][terminal commands and engine port]].
+Canonical 0.10.1 ActorManifest exports supply compatibility; missing declarations
+remain unknown. Prolog evaluates data-only compatibility. Structured investigate
+goals and inspected single-step plans are client proposals. The engine alone owns
+execution, policy and canonical results. The default adapter is unavailable; the
+explicit test adapter is simulated and polling cannot manufacture progress.
+
+* Durable lessons
+Canonical IDs can lexically overlap URLs/domains; imported IDs surface that
+ambiguity. Existing actor exports mix legacy and canonical releases; do not infer
+compatibility from actor names or silently relabel old manifests. Persist the
+request ID before submit so a lost reply does not create duplicate work.
+
+* Approval Table
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Execution | Project owner | APPROVED | Explicit terminal implementation request | 2026-10-16 user delegation |
+| Verification | Maintainer | PENDING | Exact-head tests and review | Separate terminal PR |
+| Engine integration | Engine owner | PENDING | Landed interface and isolated end-to-end tests | PR 27 |
+| Deployment | Project owner | NOT STARTED | Separate authorization | Not requested |
+
+* Changelog
+- 2026-10-16 :: Added terminal client, registry-derived Prolog plan boundary and explicit test adapter; real integration remains gated on engine availability.
