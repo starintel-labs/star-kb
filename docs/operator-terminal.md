@@ -204,7 +204,8 @@ an explicitly simulated adapter, and a socket-level HTTP protocol fixture. They 
 compatibility, stale plans, missing engine, acceptance versus completion, lost
 reply/retry, restart, engine state loss, immutable terminal states, canonical
 validation and evidence emptiness. The Nix check runs the installed command from
-outside the checkout. These tests are **not real actor end-to-end evidence**.
+outside the checkout. Workspace/test state is bounded to 256 KiB on both write
+and read; use separate workspaces for larger sessions. These tests are **not real actor end-to-end evidence**.
 
 The optional `tests/test_terminal_engine.py` consumes PR #27 and its canonical HTTP
 fixture: one test uses the actual proactive engine with an inference double, and
@@ -213,3 +214,17 @@ Before claiming landed end-to-end integration: review the final engine contract,
 run isolated synthetic execution through that engine and its actual server, verify canonical evidence readback, lost-response idempotency and restart,
 and record the exact engine and terminal heads. No live investigations, production
 secrets or deployment are part of this change.
+
+The actual durable terminal harness reuses `service/readback_integration.py` and
+adds only the terminal client path. After the engine lands, the shared-service CI
+lane runs it automatically:
+
+```sh
+STAR_KB_SERVER_ROOT=/path/to/pinned/starintel-server \
+  python3 service/terminal_readback_integration.py
+```
+
+It requires the existing STARLANG/SBCL/SWI runtime variables and Docker. For a
+separate reviewed engine checkout, set `STAR_KB_ENGINE_TEST_ROOT` explicitly.
+It starts only owned synthetic containers and tears them down. This is a test,
+not a deployment; absent engine support is an explicit CI skip, not a pass.

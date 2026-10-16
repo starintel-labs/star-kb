@@ -314,6 +314,14 @@ class ServiceAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'store_not_found'):
             self.run_command('status', key)
 
+    def test_malformed_failed_reply_does_not_claim_acknowledgement(self):
+        from star_kb_terminal.service_adapter import ServiceEngine
+        engine = object.__new__(ServiceEngine); engine.identity = 'fixture'
+        reply = {'goal': 'x', 'state': 'failed', 'attempts': 1, 'results': [],
+                 'unresolvedEffects': [], 'plan': {}, 'error': None}
+        with self.assertRaisesRegex(ValueError, 'explicit error'):
+            engine.convert(reply, 'x')
+
     def test_http_policy_and_credentials_fail_closed(self):
         self.start_fixture()
         with patch.dict(os.environ, {'TERMINAL_TEST_TOKEN': 'z' * 32}):
