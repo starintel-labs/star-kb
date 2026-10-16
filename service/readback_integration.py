@@ -329,13 +329,18 @@ class DurableReadback(unittest.TestCase):
         pending = agenda.advance("durable-target")
         self.assertEqual("pending", pending["state"])
         self.assertEqual(1, len(pending["unresolvedEffects"]))
+        self.assertEqual(1, len(lost), "Target bridge must accept before the injected lost acknowledgment")
         resumed = ProactiveEngine(client, factory, actors).advance("durable-target")
         self.assertEqual("completed", resumed["state"])
-        self.assertEqual([lost[0]["id"]], resumed["results"])
-        target = client.read(resumed["results"][0])
-        self.assertEqual("target", target["dtype"])
-        self.assertEqual("fixture-corroborator", target["actor"])
-        self.assertTrue(target["options"]["starKbDerivation"]["provenance"]["derived"])
+        self.assertEqual(1, len(resumed["results"]))
+        receipt = client.read(resumed["results"][0])
+        self.assertEqual("task", receipt["dtype"])
+        self.assertEqual([lost[0]["id"]], receipt["resultIds"])
+        self.assertEqual(lost[0]["acceptance"], receipt["extensions"]["starKbGoal"]["acceptance"])
+        self.assertEqual("accepted", receipt["extensions"]["starKbGoal"]["state"])
+        effect = receipt["extensions"]["starKbGoal"]["effect"]
+        self.assertEqual("fixture-corroborator", effect["actor"])
+        self.assertTrue(effect["provenance"]["derived"])
         # The isolated actor name has no live collector bound: proof covers
         # durable acceptance/scheduling, not a live investigation or execution.
 

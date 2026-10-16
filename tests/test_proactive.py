@@ -38,6 +38,7 @@ if ROOT:
             self.created = []
             self.lose_ack_dtype = None
             self.queued = []
+            self.accepted_targets = {}
 
         def read(self, identifier, deadline=None, optional=False):
             if identifier not in self.documents:
@@ -72,7 +73,12 @@ if ROOT:
                       "dtype": "target", "schemaVersion": "0.10.1", "dataset": self.dataset,
                       "actor": document["actor"], "target": document["target"],
                       "state": "pending", "options": options}
-            return self.create(stored, seconds)
+            self.accepted_targets[stored["id"]] = stored
+            if self.lose_ack_dtype == "target":
+                self.lose_ack_dtype = None
+                raise Fault("store_unavailable")
+            return {"id": stored["id"], "acceptance": {
+                "requestId": "request-" + stored["id"], "targetId": stored["id"]}}
 
 
 class QueryDouble:
@@ -222,7 +228,7 @@ class ProactivePolicyTests(unittest.TestCase):
         engine.submit("target", ["ab", "bc"], "corroborate-subsidiary/1", "fixture-actor")
         done = engine.advance("target")
         self.assertEqual("completed", done["state"])
-        target, = self.results("target")
+        target, = self.store.accepted_targets.values()
         self.assertEqual("fixture-actor", target["actor"])
         self.assertEqual("a", target["target"])
         self.assertEqual("pending", target["state"])
@@ -246,7 +252,8 @@ class ProactivePolicyTests(unittest.TestCase):
         done = self.engine(actors=actors).advance("target")
         self.assertEqual("completed", done["state"])
         self.assertEqual(1, len(self.store.queued))
-        self.assertEqual(1, len(self.results("target")))
+        self.assertEqual(1, len(self.store.accepted_targets))
+        self.assertEqual([], self.results("target"))
 
     def test_retry_budget_survives_restart(self):
         engine = self.engine()
@@ -302,7 +309,7 @@ class ProactivePolicyTests(unittest.TestCase):
                 failed = engine.advance("chain")
                 self.assertEqual("failed", failed["state"])
                 self.assertEqual(3, failed["attempts"])
-                committed, = self.results(dtype)
+                committed, = self.store.accepted_targets.values() if dtype == "target" else self.results(dtype)
                 logical = committed["options"]["starKbDerivation"]["logicalId"] if dtype == "target" else committed["id"]
                 self.assertTrue(committed["id"] in failed["results"] or logical in failed["unresolvedEffects"])
                 self.assertEqual(failed, self.engine(actors=actors).status("chain"))
@@ -391,6 +398,7 @@ class CanonicalHttpFixture:
     def __init__(self, documents):
         self.documents = {d["id"]: copy.deepcopy(d) for d in documents}
         self.targets = {}
+        self.acceptances = {}
         self.requests = []
         fixture = self
 
@@ -451,13 +459,14 @@ class CanonicalHttpFixture:
                 if not duplicate:
                     identifier = "server-target-" + str(len(fixture.targets) + 1)
                     fixture.targets[key] = identifier
-                    fixture.documents[identifier] = {
+                    fixture.acceptances[identifier] = {
                         "id": identifier, "rev": "1-fixture-server", "dtype": "target",
                         "schemaVersion": "0.10.1", "dataset": body["dataset"],
                         "actor": body["actor"], "target": body["target"], "state": "pending",
                         "options": body["options"]}
                 self.reply(200 if duplicate else 201, {
-                    "status": "duplicate" if duplicate else "accepted", "target_id": fixture.targets[key]})
+                    "status": "duplicate" if duplicate else "accepted", "target_id": fixture.targets[key],
+                    "request_id": "request-" + fixture.targets[key]})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -485,16 +494,28 @@ class ProactiveHttpTests(unittest.TestCase):
         engine.submit("first", ["ab", "bc"], "corroborate-subsidiary/1", "fixture-actor")
         done = engine.advance("first")
         self.assertEqual("completed", done["state"])
-        self.assertEqual(["server-target-1"], done["results"])
-        target = self.fixture.documents["server-target-1"]
+        receipt, = [self.fixture.documents[result] for result in done["results"]]
+        self.assertEqual("task", receipt["dtype"])
+        self.assertEqual(["server-target-1"], receipt["resultIds"])
+        target = self.fixture.acceptances["server-target-1"]
+        self.assertNotIn("server-target-1", self.fixture.documents)
         self.assertTrue(target["options"]["starKbDerivation"]["provenance"]["derived"])
         self.assertEqual("candidate", target["options"]["starKbDerivation"]["verificationStatus"])
         restarted = ProactiveEngine(self.store(), QueryDouble, actors=actors)
         self.assertEqual(done, restarted.status("first"))
         restarted.submit("second", ["ab", "bc"], "corroborate-subsidiary/1", "fixture-actor")
-        self.assertEqual(done["results"], restarted.advance("second")["results"])
+        second = restarted.advance("second")
+        self.assertEqual("completed", second["state"])
+        self.assertNotEqual(done["results"], second["results"])
+        self.assertEqual(["server-target-1"], self.fixture.documents[second["results"][0]]["resultIds"])
         self.assertEqual(1, len(self.fixture.targets))
         self.assertEqual(2, self.fixture.requests.count(("POST", "/api/v1/targets")))
+        self.assertNotIn(("GET", "/api/v1/documents/server-target-1"), self.fixture.requests)
+        receipts = [doc for key, doc in self.fixture.documents.items() if key.endswith(":effect:0")]
+        self.assertEqual(2, len(receipts))
+        for receipt in receipts:
+            self.assertEqual({"requestId": "request-server-target-1", "targetId": "server-target-1"},
+                             receipt["extensions"]["starKbGoal"]["acceptance"])
         self.assertFalse(any(method == "PUT" and "target" in path
                              for method, path in self.fixture.requests))
 

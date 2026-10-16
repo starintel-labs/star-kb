@@ -160,7 +160,8 @@ class ServerDocuments:
 
         The server owns Target IDs, timestamps and execution state. Its stable
         idempotency ledger resolves commit-before-ack and scheduler restart.
-        Provenance travels losslessly in canonical Target options.
+        Provenance travels losslessly in canonical Target options inside the
+        durable server acceptance; no standalone document read is implied.
         """
         if type(seconds) not in (int, float) or not 0 < seconds <= 5:
             raise Fault("invalid_request")
@@ -177,11 +178,11 @@ class ServerDocuments:
         status, receipt = self.request("POST", "/api/v1/targets", deadline, request)
         if status not in (200, 201) or receipt.get("status") not in ("accepted", "duplicate"):
             raise Fault("store_contract_mismatch")
-        stored = self.read(string(receipt.get("target_id")), deadline)
-        if (stored.get("dtype") != "target" or stored.get("actor") != document["actor"]
-                or stored.get("target") != document["target"] or stored.get("options") != options):
-            raise Fault("durable_replay_conflict")
-        return stored
+        # This endpoint durably stores an acceptance with a nested Target, not
+        # a standalone /documents row. Its receipt is the queue contract.
+        target_id = string(receipt.get("target_id"))
+        request_id = string(receipt.get("request_id"))
+        return {"id": target_id, "acceptance": {"targetId": target_id, "requestId": request_id}}
 
     def snapshot(self, identifiers):
         if (not isinstance(identifiers, list) or not 1 <= len(identifiers) <= 256
