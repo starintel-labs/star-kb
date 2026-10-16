@@ -9,7 +9,7 @@ from .adapter import Unavailable, validate_reply
 from star_kb_service.contracts import Fault
 from .contracts import Canonical, digest, read_documents, read_json
 from .inputs import goal, interpret
-from .planner import candidates, plan
+from .planner import candidates, plan, engine_plan
 from .registry import Registry
 from .simulator import SimulatedEngine
 from .workspace import workspace
@@ -20,18 +20,26 @@ def parser():
     p.add_argument('--workspace', default='terminal-workspace.json')
     p.add_argument('--canonical-root', default=os.environ.get('STARLANG_ROOT'))
     p.add_argument('--registry', help='canonical 0.10.1 ActorManifest JSON/NDJSON export')
-    p.add_argument('--adapter', choices=['unavailable', 'simulated'], default='unavailable')
+    p.add_argument('--adapter', choices=['unavailable', 'simulated', 'http'], default='unavailable')
     p.add_argument('--simulation-state', help='isolated test adapter state file')
+    p.add_argument('--service-url', help='existing loopback KB service origin')
+    p.add_argument('--token-env', default='STAR_KB_TERMINAL_TOKEN', help='credential environment variable name')
+    p.add_argument('--results-url', help='optional canonical server origin for evidence readback')
+    p.add_argument('--results-token-env', help='canonical server credential environment variable name')
     sub = p.add_subparsers(dest='command', required=True)
-    for command in ['workspace', 'inputs', 'plan', 'submit', 'shell']:
+    for command in ['workspace', 'inputs', 'submit', 'shell', 'capabilities']:
         sub.add_parser(command)
+    planning = sub.add_parser('plan')
+    planning.add_argument('--capability')
+    planning.add_argument('--source', action='append', default=[])
+    sub.add_parser('unselect')
     load = sub.add_parser('load'); load.add_argument('path')
     inp = sub.add_parser('input'); inp.add_argument('value'); inp.add_argument('--type')
     actors = sub.add_parser('actors'); actors.add_argument('--type')
     select = sub.add_parser('select'); select.add_argument('actor')
     investigate = sub.add_parser('investigate'); investigate.add_argument('value'); investigate.add_argument('--type')
     structured = sub.add_parser('goal'); structured.add_argument('path', help='structured goal JSON')
-    for command in ['status', 'results']:
+    for command in ['status', 'results', 'advance']:
         s = sub.add_parser(command); s.add_argument('request_id')
     advance = sub.add_parser('simulate'); advance.add_argument('request_id'); advance.add_argument('state')
     return p
@@ -66,10 +74,23 @@ def execute(args):
         if Path(args.simulation_state).resolve() == Path(args.workspace).resolve():
             raise ValueError('workspace and adapter state must be separate files')
         engine = SimulatedEngine(args.simulation_state)
+    elif args.adapter == 'http':
+        from .service_adapter import ServiceEngine
+        if not args.service_url:
+            raise ValueError('--service-url is required')
+        engine = ServiceEngine(args.canonical_root, args.service_url, args.token_env,
+                               args.results_url, args.results_token_env)
     else:
         engine = Unavailable()
     with workspace(args.workspace) as state:
         command = args.command
+        if command == 'capabilities':
+            if not hasattr(engine, 'capabilities'):
+                raise ValueError('selected adapter does not advertise capabilities')
+            return engine.capabilities()
+        if command == 'unselect':
+            state['selected'], state['plan'] = None, None
+            return {'selected': None}
         if command == 'workspace':
             return {'workspace': str(Path(args.workspace).resolve()), 'engine': engine.identity,
                     'simulated': engine.simulated, **state}
@@ -103,7 +124,16 @@ def execute(args):
         if command in {'plan', 'submit'}:
             if not state['goal']:
                 raise ValueError('create an investigate goal first')
-            current = plan(state['goal'], registry, state['selected'])
+            spec = (state.get('plan') or {}).get('engineGoal') if command == 'submit' else None
+            capability = spec['capability'] if spec else getattr(args, 'capability', None)
+            sources = spec['sources'] if spec else getattr(args, 'source', [])
+            if capability:
+                if not hasattr(engine, 'capabilities'):
+                    raise ValueError('engine capabilities require the HTTP adapter')
+                current = engine_plan(state['goal'], registry, state['selected'], capability,
+                                      sources, state['documents'], engine)
+            else:
+                current = plan(state['goal'], registry, state['selected'])
             if command == 'plan':
                 state['plan'] = current
                 return current
@@ -122,7 +152,7 @@ def execute(args):
             reply = validate_reply(engine.submit(current, request_id), request_id, engine, canonical)
             state['submissions'][request_id] = {**pending, 'state': reply['state'], 'lastObserved': reply}
             return reply
-        if command in {'status', 'results', 'simulate'}:
+        if command in {'status', 'results', 'simulate', 'advance'}:
             previous = state['submissions'].get(args.request_id)
             if not previous or previous['engine'] != engine.identity:
                 raise ValueError('request does not belong to this workspace/engine')
@@ -131,6 +161,8 @@ def execute(args):
                     raise ValueError('simulate requires the explicit test adapter')
                 reply = engine.advance(args.request_id, args.state)
             else:
+                if command == 'advance' and not hasattr(engine, 'capabilities'):
+                    raise ValueError('advance requires a real engine adapter; simulation uses simulate')
                 reply = getattr(engine, command)(args.request_id)
             reply = validate_reply(reply, args.request_id, engine, canonical)
             state['submissions'][args.request_id]['lastObserved'] = reply
@@ -147,9 +179,9 @@ def emit(value):
 def main(argv=None):
     args = parser().parse_args(argv)
     if args.command == 'shell':
-        print('StarIntel operator terminal. Commands: workspace load input inputs actors select investigate goal plan submit status results. help / quit')
+        print('StarIntel operator terminal. Commands: workspace load input inputs actors select unselect investigate goal plan submit status results capabilities advance. help / quit')
         base = ['--workspace', args.workspace, '--adapter', args.adapter]
-        for key in ('canonical_root', 'registry', 'simulation_state'):
+        for key in ('canonical_root', 'registry', 'simulation_state', 'service_url', 'token_env', 'results_url', 'results_token_env'):
             if getattr(args, key):
                 base += ['--' + key.replace('_', '-'), getattr(args, key)]
         while True:

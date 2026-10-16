@@ -10,19 +10,22 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from star_kb_terminal.adapter import validate_reply
-from star_kb_terminal.cli import execute, parser, validate_goal
-from star_kb_terminal.contracts import Canonical
-from star_kb_terminal.inputs import goal, interpret
-from star_kb_terminal.registry import Registry
-from star_kb_terminal.simulator import SimulatedEngine
-from star_kb_terminal.workspace import atomic_write
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_ROOT = os.environ.get('STARLANG_ROOT', str(ROOT.parent / 'star-lang'))
 SWIPL = os.environ.get('STAR_KB_TERMINAL_SWIPL', shutil.which('swipl'))
 FIXTURES = Path(__file__).parent / 'fixtures/terminal'
 AVAILABLE = Path(CANONICAL_ROOT, 'specs/starintel/0.10.1/generated/schema.json').exists()
+
+
+if AVAILABLE:
+    from star_kb_terminal.adapter import validate_reply
+    from star_kb_terminal.cli import execute, parser, validate_goal
+    from star_kb_terminal.contracts import Canonical
+    from star_kb_terminal.inputs import goal, interpret
+    from star_kb_terminal.registry import Registry
+    from star_kb_terminal.simulator import SimulatedEngine
+    from star_kb_terminal.workspace import atomic_write
 
 
 @unittest.skipUnless(AVAILABLE and SWIPL, 'terminal requires pinned schema and SWI; Nix terminal check supplies both')
@@ -159,6 +162,9 @@ class TerminalTests(unittest.TestCase):
     def test_structured_goal_boundary_no_llm_or_arbitrary_goals(self):
         value = goal('investigate example.invalid', {}, self.canonical)
         self.assertEqual(value, validate_goal(value, {}, self.canonical))
+        bad = {**value, 'requestedText': None}
+        with self.assertRaises(ValueError):
+            validate_goal(bad, {}, self.canonical)
         value['prolog'] = 'halt(9)'
         with self.assertRaises(ValueError):
             validate_goal(value, {}, self.canonical)
@@ -212,3 +218,110 @@ class TerminalTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(AVAILABLE and SWIPL, 'terminal requires pinned schema and SWI')
+class ServiceAdapterTests(unittest.TestCase):
+    """Real HTTP sockets against a protocol fixture, NOT a real engine/store."""
+    setUp = TerminalTests.setUp
+    run_command = TerminalTests.run_command
+    cli = TerminalTests.cli
+
+    def start_fixture(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        self.requests, self.runs = [], {}
+        fixture = self
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+            def do_GET(self):
+                body = json.dumps({'id': 'fixture:claim', 'rev': '1-fixture', 'dataset': 'synthetic',
+                    'dtype': 'document', 'schemaVersion': '0.10.1',
+                    'provenance': {'collector': 'synthetic-protocol-fixture'}}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def do_POST(self):
+                request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                fixture.requests.append(request)
+                if self.headers.get('Authorization') != 'Bearer ' + 'x' * 32:
+                    self.send_response(401); self.end_headers(); return
+                op = request['operation']
+                result = {'state': 'ready'}
+                if op == 'health':
+                    result['scope'] = {'tenant': 'synthetic', 'dataset': 'synthetic'}
+                elif op == 'actor-capabilities':
+                    result.update(interface='star.kb.goals/1', rules=['fixture-rule/1'],
+                                  actors={}, limits={'sources': 16, 'attempts': 3})
+                else:
+                    key = request['parameters']['goal']
+                    if op == 'goal-submit':
+                        fixture.runs.setdefault(key, {'state': 'pending', 'goal': key,
+                            'plan': request['parameters'], 'attempts': 0, 'results': [],
+                            'unresolvedEffects': [], 'error': None})
+                    if key not in fixture.runs:
+                        result = {'state': 'failed', 'error': 'store_not_found'}
+                    else:
+                        if op == 'goal-advance':
+                            fixture.runs[key].update(state='completed', attempts=1, results=['fixture:claim'])
+                        result = fixture.runs[key]
+                body = json.dumps({'protocol': 'star.kb.service/1', 'id': request['id'], **result}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        def close():
+            server.shutdown(); server.server_close(); thread.join(2)
+        self.addCleanup(close)
+        env = patch.dict(os.environ, {'TERMINAL_TEST_TOKEN': 'x' * 32}); env.start(); self.addCleanup(env.stop)
+        self.base[self.base.index('simulated')] = 'http'
+        self.base += ['--service-url', 'http://127.0.0.1:' + str(server.server_port), '--token-env', 'TERMINAL_TEST_TOKEN']
+
+    def prepare(self):
+        doc = {'id': 'fixture:relation', 'rev': '1-fixture', 'dtype': 'relation',
+               'dataset': 'synthetic', 'schemaVersion': '0.10.1',
+               'source': {'schema': 'organization', 'id': 'a'},
+               'destination': {'schema': 'organization', 'id': 'b'}, 'predicate': 'subsidiary-of'}
+        file = self.dir / 'relation.json'; atomic_write(file, doc)
+        self.run_command('load', str(file))
+        self.run_command('investigate', doc['id'], '--type', 'document-id')
+        return self.run_command('plan', '--capability', 'fixture-rule/1', '--source', doc['id'])
+
+    def test_http_discovery_submit_poll_advance_and_cli_restart(self):
+        self.start_fixture(); planned = self.prepare()
+        self.assertEqual('fixture-rule/1', planned['engineGoal']['capability'])
+        accepted = self.run_command('submit'); key = accepted['requestId']
+        self.assertEqual('accepted', accepted['state']); self.assertFalse(accepted['simulated'])
+        self.assertEqual('accepted', self.run_command('status', key)['state'])
+        self.assertEqual(1, len(self.runs))
+        self.assertEqual(key, self.run_command('submit')['requestId'])
+        done = self.run_command('advance', key)
+        self.assertEqual('completed', done['state'])
+        self.assertEqual('not established', done['actorCompletion'])
+        self.assertEqual([], done['documents'])
+        self.assertEqual('not fetched by terminal', done['evidence'][0]['readback'])
+        output = self.cli('results', key)
+        self.assertEqual(0, output.returncode, output.stderr)
+        self.assertEqual('completed', json.loads(output.stdout)['state'])
+        self.assertEqual(len(self.requests), len({r['id'] for r in self.requests}))
+        self.base += ['--results-url', self.base[self.base.index('--service-url') + 1],
+                      '--results-token-env', 'TERMINAL_TEST_TOKEN']
+        readback = self.run_command('results', key)
+        self.assertEqual('1-fixture', readback['documents'][0]['rev'])
+        self.assertEqual('validated canonical 0.10.1', readback['evidence'][0]['readback'])
+        # A fresh status request cannot replay a stale service response.
+        self.runs.clear()
+        with self.assertRaisesRegex(ValueError, 'store_not_found'):
+            self.run_command('status', key)
+
+    def test_http_policy_and_credentials_fail_closed(self):
+        self.start_fixture()
+        with patch.dict(os.environ, {'TERMINAL_TEST_TOKEN': 'z' * 32}):
+            with self.assertRaises(Exception):
+                self.run_command('capabilities')
+        self.prepare()
+        with self.assertRaisesRegex(ValueError, 'not advertised'):
+            self.run_command('plan', '--capability', 'invented-rule', '--source', 'fixture:relation')
+        self.run_command('select', 'fixture-domain')
+        with self.assertRaisesRegex(ValueError, 'Target compatibility'):
+            self.run_command('plan', '--capability', 'fixture-rule/1', '--source', 'fixture:relation')

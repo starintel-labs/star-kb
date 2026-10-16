@@ -63,7 +63,7 @@ def interpret(value, documents, canonical, kind=None):
 
 
 def goal(text, documents, canonical, kind=None):
-    if not text.lower().startswith('investigate '):
+    if not isinstance(text, str) or not text.lower().startswith('investigate '):
         raise ValueError('supported language is: investigate X; no model is called')
     subject = interpret(text[len('investigate '):].strip(), documents, canonical, kind)
     return {'protocol': 'star.kb.goal/1', 'intent': 'investigate', 'subject': subject,

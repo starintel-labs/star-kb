@@ -19,7 +19,10 @@ Canonical 0.10.1 ActorManifest exports supply compatibility; missing declaration
 remain unknown. Prolog evaluates data-only compatibility. Structured investigate
 goals and inspected single-step plans are client proposals. The engine alone owns
 execution, policy and canonical results. The default adapter is unavailable; the
-explicit test adapter is simulated and polling cannot manufacture progress.
+explicit test adapter is simulated and polling cannot manufacture progress. An
+HTTP adapter consumes the separately owned goals interface, with explicit advance
+and optional validated canonical evidence readback. Goal completion never implies
+actor completion. Final landed-engine integration remains pending.
 
 * Durable lessons
 Canonical IDs can lexically overlap URLs/domains; imported IDs surface that

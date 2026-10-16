@@ -5,12 +5,15 @@ inspect inputs, discover actors, explicitly select an actor, interpret a goal,
 inspect a plan, submit, then inspect observed status and evidence. It contains no
 sn0int source, actor implementation, collector, scheduler or canonical database.
 
-Current boundary: **simulation only for submission**. The default adapter fails
-closed. The engine belongs to PR #27 / task
-`01a14593-c522-76c8-9ac8-7efa043950f2`; its collector/proactive files are not edited
-here. A real engine adapter and isolated end-to-end execution remain an integration
-gate after that interface lands. Simulated completion is never reported as actual
-actor completion. Polling does not advance simulated state.
+Current boundary: the default adapter fails closed; `--adapter simulated` is an
+explicit test adapter. `--adapter http` consumes the existing engine PR #27
+`star.kb.service/1` operations and `star.kb.goals/1` capability interface. The engine
+belongs to task `01a14593-c522-76c8-9ac8-7efa043950f2`; its collector/proactive files
+are not edited here. Its initial rule accepts revisioned Relation source IDs, not
+general URL/domain investigations. Goal effects acknowledged by that engine are
+not evidence that a target actor executed or completed. Polling does not advance
+work; `advance REQUEST_ID` is explicit. Landed-engine end-to-end verification
+remains an acceptance gate; see the exact-head PR evidence.
 
 ## Run
 
@@ -109,8 +112,8 @@ natural-language/model boundary: a future model may propose this object, but may
 not supply Prolog, actor code, budget increases or hidden effects. CI and all
 current commands use deterministic parsing only.
 
-`star_kb_terminal.adapter.Engine` is the **proposed local Python client port**, not
-a new public wire protocol or a competing engine. The eventual adapter translates
+`star_kb_terminal.adapter.Engine` is the local Python client port, not
+a new public wire protocol or a competing engine. The HTTP adapter translates
 into the engine owner's supported operations:
 
 - `submit(plan, request_id)`: idempotently accept or reject the inspected goal/plan.
@@ -125,8 +128,8 @@ Replies identify `requestId`, stable `engine`, `simulated` (boolean), `state`,
 `stopped` (boolean), `reason` (required for stopped states),
 `progress={completed,total}`, `evidence` (array), and optional `documents` (array).
 `completed` means the engine's explicit terminal state, not a submitted target,
-queue ACK or the existence of an operation ID. The real adapter must expose engine
-provenance and canonical result revisions; this client validates documents again.
+queue ACK or the existence of an operation ID. The HTTP adapter retains the engine plan and unresolved effects; optional canonical
+readback provides revisions, digests and provenance, and validates documents again.
 Authentication, canonical writes, policy, budgets, cancellation and dispatch stay
 with the engine and its transport. No new remote listener is introduced.
 
@@ -138,6 +141,57 @@ keep the path stable across restarts. Moving a workspace is not a supported repl
 operation. Local files use atomic replace/fsync and an advisory lock, with new
 files mode 0600. Concurrent clients serialize per workspace.
 
+## Existing engine service
+
+The HTTP adapter reuses the existing authenticated loopback service, bounded
+socket/deadline primitives and canonical readback client. No HTTP redirect is
+followed, credentials are environment references, and authenticated health scope
+is part of connection identity. Do not place secret values in CLI flags or files.
+Transport requests get fresh IDs to avoid the service replay cache returning
+stale status; durable goal IDs stay stable for idempotent retry. The current
+service returns HTTP 400 when a goal response contains `error: null`; the adapter
+validates the typed goal envelope on both 200 and 400 and does not treat HTTP status
+alone as success. Other HTTP errors fail closed.
+
+With an explicitly configured **isolated synthetic** service from PR #27:
+
+```sh
+python3 -m star_kb_terminal.cli --workspace "$work/workspace.json" \
+  --adapter http --service-url http://127.0.0.1:8765 \
+  --token-env SYNTHETIC_KB_TOKEN \
+  --results-url http://127.0.0.1:8766 --results-token-env SYNTHETIC_STORE_TOKEN shell
+```
+
+```text
+capabilities
+load /path/to/synthetic-revisioned-relations.json
+unselect
+investigate relation-ab --type document-id
+plan --capability subsidiary-chain/1 --source relation-ab --source relation-bc
+submit
+status REQUEST_ID
+advance REQUEST_ID
+results REQUEST_ID
+```
+
+The rule must be advertised by the engine; source snapshots must be loaded,
+revisioned canonical Relations, with the goal subject among those source IDs.
+The engine re-reads and authorizes canonical sources before applying its rule.
+An optional selected actor must accept `target` in its registry manifest **and**
+be allowlisted for the capability by the engine. The engine owns Target conversion
+and admission. `unselect` selects engine-only rule execution.
+
+`results` without `--results-url` labels references **not fetched by terminal**.
+With the canonical readback URL it fetches bounded results, validates their IDs,
+dataset, revisions and full 0.10.1 schema, then displays provenance/evidence.
+`actorCompletion` remains **not established**, even when the goal is completed.
+Partial results and `unresolvedEffects` remain visible on failed/exhausted goals.
+
+An upstream canonical registry export can be produced in its own environment with
+`python3 -m starintel_pro_actors.manifests --actor watchlist > actors.ndjson`.
+This only emits registry metadata; do not use `--rabbit-url`. The terminal consumes
+that export; it does not vendor the upstream actor list or install actor runtimes.
+
 ## Verification and integration gate
 
 ```sh
@@ -146,14 +200,16 @@ swipl -q -s tests/terminal_tests.pl -g run_tests -t halt
 ```
 
 Tests use the actual Prolog planner, synthetic canonical inputs, CLI subprocesses,
-and an explicitly simulated adapter. They cover ambiguous inputs, unknown
+an explicitly simulated adapter, and a socket-level HTTP protocol fixture. They cover ambiguous inputs, unknown
 compatibility, stale plans, missing engine, acceptance versus completion, lost
 reply/retry, restart, engine state loss, immutable terminal states, canonical
 validation and evidence emptiness. The Nix check runs the installed command from
 outside the checkout. These tests are **not real actor end-to-end evidence**.
 
-Before claiming real integration: review the landed engine contract, add its
-adapter without changing ownership, run isolated synthetic execution through that
-engine, verify canonical evidence readback, lost-response idempotency and restart,
+The optional `tests/test_terminal_engine.py` consumes PR #27 and its canonical HTTP
+fixture: one test uses the actual proactive engine with an inference double, and
+one requires real SBCL/SWI. These do not prove actual StarIntel/CouchDB durability.
+Before claiming landed end-to-end integration: review the final engine contract,
+run isolated synthetic execution through that engine and its actual server, verify canonical evidence readback, lost-response idempotency and restart,
 and record the exact engine and terminal heads. No live investigations, production
 secrets or deployment are part of this change.

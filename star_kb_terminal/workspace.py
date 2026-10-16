@@ -9,12 +9,15 @@ from .contracts import read_json
 
 
 def atomic_write(path, value):
+    payload = json.dumps(value, sort_keys=True, indent=2, allow_nan=False)
+    if len(payload.encode('utf-8')) > 262144:
+        raise ValueError('workspace/test state exceeds 256 KiB; use a separate workspace')
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.terminal-', dir=path.parent)
     try:
         with os.fdopen(fd, 'w') as stream:
-            json.dump(value, stream, sort_keys=True, indent=2, allow_nan=False)
+            stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
