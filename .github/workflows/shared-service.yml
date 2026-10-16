@@ -44,6 +44,11 @@ jobs:
             timeout 90 sbcl --noinform --disable-debugger --script service/worker.lisp < service/empty-snapshot.json
             "$KB_TEST_PYTHON" -m unittest discover -s tests -p "test_*.py" -v
             "$KB_TEST_PYTHON" service/readback_integration.py
+            if test -f star_kb_service/proactive.py; then
+              "$KB_TEST_PYTHON" service/terminal_readback_integration.py
+            else
+              echo "Terminal durable integration awaits engine PR 27"
+            fi
             "$KB_TEST_PYTHON" scripts/sync.py
             "$KB_TEST_PYTHON" scripts/sync.py --check
             "$KB_TEST_PYTHON" scripts/validate-docs.py

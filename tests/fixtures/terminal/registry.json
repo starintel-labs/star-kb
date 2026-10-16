@@ -1,0 +1,5 @@
+[
+  {"id":"starintel:actor-manifest:fixture-domain","dataset":"synthetic","dtype":"actor-manifest","schemaVersion":"0.10.1","actor":"fixture-domain","accepts":["domain"],"produces":["relation"],"runtime":"test-only"},
+  {"id":"starintel:actor-manifest:fixture-url","dataset":"synthetic","dtype":"actor-manifest","schemaVersion":"0.10.1","actor":"fixture-url","accepts":["url"],"produces":["document"],"runtime":"test-only"},
+  {"id":"starintel:actor-manifest:fixture-unknown","dataset":"synthetic","dtype":"actor-manifest","schemaVersion":"0.10.1","actor":"fixture-unknown","produces":["document"],"runtime":"test-only"}
+]
