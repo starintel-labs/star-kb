@@ -11,3 +11,7 @@ __pycache__/
 !.env.example
 
 .deps/
+
+# Local operator state; examples use mktemp outside the checkout.
+terminal-workspace.json
+terminal-workspace.json.lock

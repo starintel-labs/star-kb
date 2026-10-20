@@ -12,6 +12,9 @@
       python = pkgs.python3.withPackages (ps: [ ps.jsonschema ps.pyzmq ]);
       source = pkgs.lib.cleanSource ./.;
       logicRuntime = star-lang.packages.${system}.star-lang-logic-runtime;
+      terminal = import ./nix/terminal.nix {
+        inherit pkgs python source logicRuntime system;
+      };
       tools = pkgs.stdenvNoCC.mkDerivation {
         pname = "star-kb-tools";
         version = "0.1.0";
@@ -112,14 +115,16 @@
         prolog-star-kb = tools;
         starintel-llm = tools;
         star-kb-service = service;
+        star-kb-terminal = terminal.package;
       };
       apps.${system} = {
+        star-kb-terminal = { type = "app"; program = "${terminal.package}/bin/star-kb-terminal"; };
         default = { type = "app"; program = "${tools}/bin/prolog-star-kb"; };
         prolog-star-kb = { type = "app"; program = "${tools}/bin/prolog-star-kb"; };
         starintel-llm = { type = "app"; program = "${tools}/bin/starintel-llm"; };
         star-kb-service = { type = "app"; program = "${service}/bin/star-kb-service"; };
       };
-      checks.${system} = { installed-cli = cliCheck; installed-service = installedServiceCheck; source = sourceCheck; };
+      checks.${system} = { terminal = terminal.check; installed-cli = cliCheck; installed-service = installedServiceCheck; source = sourceCheck; };
       devShells.${system}.default = pkgs.mkShell {
         packages = [ python pkgs.swi-prolog pkgs.git ];
       };
