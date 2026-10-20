@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import itertools
 import json
 import sys
@@ -11,6 +12,18 @@ from .ingest.autodig import ingest_autodig, ndjson_bytes
 from .projection import ProjectionManifest, load_documents, render_projection, stream_projection_lines
 from .shapes import DEFAULT_MAX_EXEMPLARS, mine_documents, render_shapes, report_json
 from .tools import compile_tool_call, tool_catalog
+
+
+@contextmanager
+def _projection_output(filename: str):
+    """Create configured output parents without removing existing contents."""
+    try:
+        path = Path(filename)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            yield handle
+    except OSError as exc:
+        raise SystemExit(f"cannot write projection {filename!r}: {exc}") from exc
 
 
 def _ndjson_first_line(line: str) -> bool:
@@ -116,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 stream = stream_projection_lines(text.splitlines(), manifest)
             if args.output:
-                with open(args.output, "w", encoding="utf-8") as out:
+                with _projection_output(args.output) as out:
                     for line in stream:
                         out.write(line + "\n")
             else:
@@ -125,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         rendered = render_projection(load_documents(text), manifest)
         if args.output:
-            Path(args.output).write_text(rendered, encoding="utf-8")
+            with _projection_output(args.output) as out:
+                out.write(rendered)
         else:
             sys.stdout.write(rendered)
         return 0
