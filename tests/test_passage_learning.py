@@ -141,6 +141,25 @@ class PassageLearningTests(unittest.TestCase):
             sid=selectors.create('bounded',1,{'passage':['/rawContent',6,'one']},'Bound text work')
             self.assertEqual(selectors.evaluate(sid)['execution'],'input_limit')
 
+    def test_oversized_text_does_not_discard_metadata_discovery(self):
+        for i in range(4):
+            d=document('metadata-'+str(i),'recordedFeature',str(i//2))
+            if i==0:d['rawContent']='word '*2049
+            self.store.ingest(self.adapter,d)
+        runtime=Runtime(self.store);result=runtime.tick()
+        self.assertEqual(result['state'],'done')
+        self.assertTrue(result['result'])
+        self.assertEqual(result['discoveryStages'][1]['execution'],'input_limit')
+        self.assertTrue(self.store.records('evidence_request'))
+        failures=[r for r in self.store.records('experiment') if r.get('procedure')=='discovery-stage/1']
+        self.assertEqual(len(failures),1)
+        # Remaining ingestion events for this generation are checkpoint no-ops.
+        rest=runtime.drain()
+        self.assertTrue(all(r['state']=='done' and r['result']==[] for r in rest))
+        self.assertEqual(len([r for r in self.store.records('experiment') if r.get('procedure')=='discovery-stage/1']),1)
+        self.assertIsNone(self.store.claim())
+        self.assertEqual(len(self.store.document('metadata-0')['rawContent'].split()),2049)
+
     def test_foreign_scope_and_missing_text(self):
         self.train()
         other=Store(Path(self.temp.name)/'kb.sqlite',Scope('other','replay','demo'),Limits())

@@ -210,7 +210,11 @@ internal straight/curly apostrophes), case folding, punctuation/whitespace ignor
 no stemming/fuzzy matching. Limits are 2048 tokens and 65536 Unicode code points
 per field, 3–16 tokens per window, and the scope's observation bound across cached
 windows. Exceeding a text/window bound returns `input_limit`, not a membership
-negative or a partially evaluated sample. Each query compares only its requested
+negative or a partially evaluated selector sample. In continuous discovery, a passage-stage
+input/budget failure is recorded separately as an experiment and in
+`discoveryStages`; successful metadata candidates still reach evidence planning
+and the generation checkpoint. An unchanged over-limit document does not force
+every discovery event through repeated failed scans. Each query compares only its requested
 anchors; there is no implicit all-pairs corpus scan. Projection and Prolog resource
 limits remain enforced. Spans are start/end-exclusive Unicode code-point offsets
 into the retained original source field. `passageEvidence` reports both source

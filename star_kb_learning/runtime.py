@@ -15,7 +15,7 @@ class Runtime:
     def tick(self):
         message=self.store.claim()
         if message is None:return None
-        identifier=message['id']
+        identifier=message['id'];stages=[]
         cancel=lambda:self.store.cancelled(identifier,message['attempts'])
         try:
             if cancel():raise LearningError('cancelled')
@@ -27,8 +27,24 @@ class Runtime:
                 checkpoint=self.store.db.execute('SELECT value FROM checkpoints WHERE scope=? AND name=?',
                                                 (self.store.scope.key,'discovery')).fetchone()
                 result=[] if checkpoint and checkpoint[0]==generation else self.discovery.discover(cancelled=cancel)
-                if (not checkpoint or checkpoint[0]!=generation) and len(result)<self.store.limits.candidates:
-                    result+=self.discovery.discover_passages(cancelled=cancel)
+                if not checkpoint or checkpoint[0]!=generation:
+                    stages.append({'strategy':'field-equivalence','execution':'complete','candidates':len(result)})
+                    if len(result)<self.store.limits.candidates:
+                        try:
+                            passages=self.discovery.discover_passages(cancelled=cancel)
+                            result+=passages
+                            stages.append({'strategy':'passage','execution':'complete','candidates':len(passages)})
+                        except LearningError as exc:
+                            if str(exc) not in ('passage_input_limit','discovery_budget'):raise
+                            # One strategy's input/budget failure must not discard
+                            # successful metadata candidates or retry an unchanged
+                            # corpus indefinitely. Record the incomplete stage.
+                            stage={'strategy':'passage','execution':'input_limit' if str(exc)=='passage_input_limit' else 'budget_exhausted',
+                                   'reason':str(exc),'inputGeneration':generation,'candidates':0}
+                            self.store.record('experiment',{'procedure':'discovery-stage/1',**stage},
+                                              [d['id'] for d in self.store.documents()],state='evaluated')
+                            stages.append(stage)
+                    else:stages.append({'strategy':'passage','execution':'candidate_limit','candidates':0})
                 for item in result:
                     hypothesis=self.store.get(item['hypothesis'])
                     self.planner.plan(item['hypothesis'],hypothesis['requirements'])
@@ -41,7 +57,7 @@ class Runtime:
             else:raise LearningError('unsupported_message')
             if cancel():raise LearningError('cancelled')
             self.store.settle(identifier,message['attempts'])
-            return {'message':identifier,'state':'done','result':result}
+            return {'message':identifier,'state':'done','result':result,'discoveryStages':stages}
         except LearningError as exc:
             self.store.settle(identifier,message['attempts'],str(exc))
             return {'message':identifier,'state':'cancelled' if cancel() else 'retry_or_failed','error':str(exc)}
