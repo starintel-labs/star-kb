@@ -3,7 +3,7 @@
 :- use_module(library(apply)).
 :- use_module(library(time)).
 :- use_module(library(http/json)).
-:- dynamic value/3, claim/5, edge/4, definition/3, subject/2.
+:- dynamic value/3, claim/5, edge/4, definition/3, subject/2, passage_match/4.
 
 % Values are canonical JSON scalars, not executable terms. No caller goal is
 % invoked through call/1, and no generated directive/rule is consulted.
@@ -11,6 +11,8 @@ proof(field(Path,Value), D, T,F,E) :-
     (value(D,Path,Value) -> T=1,E=[D] ; T=0,E=[]), F=0.
 proof(same(Path,Anchor), D,T,F,E) :-
     (value(D,Path,V), V \== null, value(Anchor,Path,V) -> T=1,E=[D,Anchor] ; T=0,E=[]), F=0.
+proof(passage(Path,Minimum,Anchor),D,T,F,E) :-
+    (passage_match(D,Anchor,Path,Minimum) -> T=1,E=[D,Anchor] ; T=0,E=[]), F=0.
 proof(attributed(Who,P,O), D,T,F,E) :-
     (D=Who;claim(Who,P,O,_,D)),!,
     findall(R,claim(Who,P,O,positive,R),Ps),
@@ -33,6 +35,7 @@ proof(count(Item,Minimum),_,T,F,E) :-
 
 substitute(same(P,parameter),A,same(P,A)) :- !.
 substitute(field(P,V),_,field(P,V)).
+substitute(passage(P,N,parameter),A,passage(P,N,A)) :- !.
 bit([],0) :- !.
 bit(_,1).
 all_bit(Bs,1) :- maplist(=(1),Bs),!.

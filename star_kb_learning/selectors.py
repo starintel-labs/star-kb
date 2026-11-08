@@ -3,9 +3,12 @@ import json
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from prolog_star_kb.projection import Fact, prolog_term, iter_scalars
 from .contracts import LearningError, canonical, digest
+from .passages import token_windows, overlap
+from .discovery import value_at
 
 MODULE = Path(__file__).resolve().parents[1] / 'kb/core/star_learning.pl'
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_.:/-]{1,256}$')
@@ -25,11 +28,14 @@ def compile_expression(expr, definitions, depth=0, bound=12):
         if not isinstance(args, list) or len(args) != 2 or type(args[1]) is not int or not 1 <= args[1] <= 256:
             raise LearningError('invalid_aggregation')
         return 'count(' + compile_expression(args[0], definitions, depth+1, bound) + ',' + str(args[1]) + ')'
-    arities = {'field': 2, 'same': 2, 'attributed': 3, 'reachable': 3, 'during': 3, 'learned': 3}
+    arities = {'field': 2, 'same': 2, 'attributed': 3, 'reachable': 3, 'during': 3, 'learned': 3, 'passage': 3}
     if op not in arities or not isinstance(args, list) or len(args) != arities[op]:
         raise LearningError('prohibited_capability')
-    if op in ('field', 'same', 'during') and (not isinstance(args[0], str) or not args[0].startswith('/') or len(args[0])>256):
+    if op in ('field', 'same', 'during', 'passage') and (not isinstance(args[0], str) or not args[0].startswith('/') or len(args[0])>256):
         raise LearningError('invalid_path')
+    if op == 'passage':
+        if type(args[1]) is not int or not 3<=args[1]<=16 or not isinstance(args[2],str) or not IDENTIFIER.fullmatch(args[2]):
+            raise LearningError('invalid_passage_selector')
     if op == 'field':
         if isinstance(args[1], (dict, list)):
             raise LearningError('scalar_required')
@@ -80,6 +86,40 @@ class Selectors:
         expression = compile_expression(selector['expression'], definitions, bound=self.store.limits.depth)
         documents = self.store.documents()
         facts = []
+        passage_evidence=[]
+        # Only requested anchors are compared: no quadratic all-pairs corpus scan.
+        def requests(expr):
+            op,args=next(iter(expr.items()))
+            if op in ('all','any'):
+                for child in args:yield from requests(child)
+            elif op in ('exclude','count'):
+                yield from requests(args if op=='exclude' else args[0])
+            elif op=='passage':yield tuple(args)
+            elif op=='learned':
+                body=definitions[(args[0],args[1])]['expression']
+                if 'passage' in body:
+                    path,minimum,_=body['passage'];yield (path,minimum,args[2])
+        started=time.monotonic();windows={};window_count=0
+        try:
+            for path,minimum,anchor in sorted(set(requests(selector['expression']))):
+                anchor_doc=self.store.document(anchor)
+                if anchor_doc is None:continue
+                for d in documents:
+                    if cancelled():return {'execution':'cancelled','rows':[]}
+                    if time.monotonic()-started>self.store.limits.seconds:
+                        return {'execution':'timeout','rows':[]}
+                    for doc in (d,anchor_doc):
+                        key=(doc['id'],path,minimum)
+                        if key not in windows:
+                            windows[key]=token_windows(value_at(doc,path),minimum)
+                            window_count+=len(windows[key] or {})
+                            if window_count>self.store.limits.observations:raise LearningError('passage_input_limit')
+                    witness=overlap(windows[(d['id'],path,minimum)],windows[(anchor,path,minimum)])
+                    if witness is not None:
+                        facts.append(Fact('star_learning:passage_match',(d['id'],anchor,path,minimum)).render())
+                        passage_evidence.append({'subject':d['id'],'anchor':anchor,'path':path,**witness})
+        except LearningError as exc:
+            return {'execution':'input_limit','reason':str(exc),'rows':[]}
         # Learning artifacts are an explicit subject family, not silently mixed
         # into the canonical-document universe of an existing selector.
         record_kinds={'hypothesis','definition','association','evidence_request','experiment'}
@@ -116,7 +156,6 @@ class Selectors:
                                      stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             except OSError as exc:
                 return {'execution':'engine_unavailable','reason':str(exc),'rows':[]}
-            import time
             deadline = time.monotonic()+limits.seconds+1
             while True:
                 if cancelled():
@@ -147,6 +186,7 @@ class Selectors:
                     'version':record.get('version'),'state':record['state'],'digest':digest(record),
                     'sourceDependencies':self.store.dependencies(record['id']),
                     'extractionMethod':'typed-learning-record/1','scope':self.store.scope.key}
+        result['passageEvidence']=passage_evidence
         result['definition']=selector['expression']
         result['assumptions']=['Open-world absence is unresolved.', 'Attributed statements are not adjudicated facts.']
         # Cache explanations with the complete bounded input set: adding or

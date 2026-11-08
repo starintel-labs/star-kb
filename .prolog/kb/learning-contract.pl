@@ -1,3 +1,4 @@
+:- multifile learning_invention/2.
 % Durable architecture facts; tests are recorded separately in run evidence.
 learning_contract('star.kb.learning/1').
 canonical_authority(starintel_json).
