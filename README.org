@@ -7,7 +7,7 @@ Star KB is the shared symbolic reasoning layer for StarIntel.
 
 *Canonical StarIntel JSON is authoritative.* Prolog is a deterministic, rebuildable projection used for logic, graph traversal, explanations, and AI/RLM tooling. This avoids maintaining two competing truth stores.
 
-The active StarIntel core release is =0.9.1= over the immutable =0.9.0= base schema. Projection metadata records release, schema, profile, revision, and expansion identity.
+The legacy projector defaults to release =0.9.1= over the immutable =0.9.0= base schema. The shared service and learning controller use an explicit, hash-pinned =0.10.1= adapter; these formats are not silently interchanged. Projection metadata records release, schema, profile, revision, and expansion identity.
 
 * prolog-star-kb
 
@@ -69,6 +69,14 @@ roam/indexes/       project indexes and roadmaps
 scripts/            RAGE workflow/validation
 tests/              regression coverage
 #+end_src
+
+* Continuous symbolic learning
+
+The experimental =star_kb_learning= controller admits canonical =0.10.1= replay
+documents, discovers bounded candidate definitions, plans discriminating evidence,
+evaluates on separate labelled sources, and reuses accepted predicates in bounded
+Prolog selectors. See =docs/continuous-learning.md= for interfaces, reproducible
+experiments, and known limits. No live collector is enabled automatically.
 
 * RAGE loop
 

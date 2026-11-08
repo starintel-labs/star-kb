@@ -43,6 +43,7 @@ jobs:
             "$STARLANG_SWI_EXECUTABLE" --version
             timeout 90 sbcl --noinform --disable-debugger --script service/worker.lisp < service/empty-snapshot.json
             "$KB_TEST_PYTHON" -m unittest discover -s tests -p "test_*.py" -v
+            "$KB_TEST_PYTHON" scripts/verify-learning.py --starlang "$STARLANG_ROOT"
             "$KB_TEST_PYTHON" service/readback_integration.py
             "$KB_TEST_PYTHON" scripts/sync.py
             "$KB_TEST_PYTHON" scripts/sync.py --check
