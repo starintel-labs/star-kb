@@ -20,7 +20,7 @@ from star_kb_learning.selectors import Selectors
 
 def run(input_path,starlang,day,dataset='reddit',source='https://ingest.starintel.actor',swipl='swipl'):
     start=int(dt.datetime.combine(dt.date.fromisoformat(day),dt.time(),dt.timezone.utc).timestamp());end=start+86400
-    limits=Limits(steps=100000);adapter=CanonicalAdapter(starlang);scope=Scope('public-day-test','public-reddit-replay',dataset)
+    limits=Limits(steps=100000,queue=256);adapter=CanonicalAdapter(starlang);scope=Scope('public-day-test','public-reddit-replay',dataset)
     accepted=[];excluded=0;originals=[]
     # Bound scanned input as well as admitted corpus; export an actual day at
     # source rather than asking this tool to scan an arbitrary entire dump.

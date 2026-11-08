@@ -46,6 +46,7 @@ class KnowledgeActorTests(unittest.TestCase):
         self.assertEqual(projection['state'],'complete')
         self.assertTrue(any("'/language'" in f for f in projection['facts']))
         self.assertFalse(projection['durableCanonicalWrite'])
+        self.assertEqual(projection['discoveryEventsProcessed'],1)
         replay=self.request('document-project',{'document':self.document()})
         self.assertEqual(projection,replay)
         result=self.request('prolog-query',{'selector':self.selector()},'query',projection['generation'])

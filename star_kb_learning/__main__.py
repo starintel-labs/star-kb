@@ -25,13 +25,16 @@ def main():
     store=Store(args.store,Scope(args.project,args.operation,args.dataset),Limits())
     try:
         if args.command=='replay':
-            changed=0
+            changed=0;events=[];runtime=Runtime(store);batch=0
             # Bounded each line and transaction, so interruption is replay-safe.
             with args.input.open() as stream:
                 for line in stream:
                     if len(line.encode())>store.limits.document_bytes:raise ValueError('document_limit')
-                    if line.strip():changed+=store.ingest(adapter,json.loads(line))
-            result={'mode':'replay','changed':changed,'events':Runtime(store).drain()}
+                    if line.strip():
+                        changed+=store.ingest(adapter,json.loads(line));batch+=1
+                    if batch>=16:
+                        events.extend(runtime.drain(maximum=16));batch=0
+            result={'mode':'replay','changed':changed,'events':events+runtime.drain()}
         elif args.command=='tick':result=Runtime(store).drain()
         elif args.command=='follow':result=Runtime(store).follow(adapter,args.input,polls=args.polls)
         elif args.command=='select':

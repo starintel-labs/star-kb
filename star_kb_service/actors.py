@@ -10,6 +10,7 @@ from prolog_star_kb.projection import _walk
 from star_kb_learning.contracts import CanonicalAdapter, Limits, Scope, LearningError, digest
 from star_kb_learning.store import Store
 from star_kb_learning.selectors import Selectors
+from star_kb_learning.runtime import Runtime
 from .contracts import Fault, closed, encode, MAX_BYTES
 
 ACTOR_OPERATIONS = frozenset({'document-project','prolog-query'})
@@ -79,6 +80,9 @@ class KnowledgeActors:
                     if len(encode(result))>MAX_BYTES-2048:raise Fault('output_limit')
                     if cancelled():raise Fault('cancelled')
                     result['changed']=self.store.ingest(self.adapter,document)
+                    # Bounded deterministic discovery, never collection or an
+                    # unconfigured model call, progresses on ingestion.
+                    result['discoveryEventsProcessed']=len(Runtime(self.store).drain(maximum=1))
                     result['generation']=self.generation
                     return result
                 if operation=='prolog-query':
