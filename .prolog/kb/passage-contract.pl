@@ -1,3 +1,4 @@
+:- multifile learning_invention/2.
 % Operational architecture; runtime test outcomes belong in the local run journal.
 learning_invention(bounded_passage_overlap, operational_definition).
 passage_relation(exact_casefold_word_window, not_source_attribution).
