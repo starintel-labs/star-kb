@@ -55,7 +55,7 @@ def configured_service(config, root):
                 if "documents" in scope or "server" in scope:
                     raise ValueError("learning scope owns its explicit canonical replay source")
                 learning=closed(scope["learning"],("project","operation","path"),("documents",))
-                actors[key]=KnowledgeActors(root,Scope(learning["project"],learning["operation"],key[1]),
+                actors[key]=KnowledgeActors(root,Scope(learning["project"],learning["operation"],key[1],tenant=key[0]),
                     learning["path"],os.environ.get("STARLANG_SWI_EXECUTABLE","swipl"),learning.get("documents",[]))
                 owned.callback(actors[key].close)
                 continue

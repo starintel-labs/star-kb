@@ -79,8 +79,10 @@ class LearningTests(unittest.TestCase):
             self.store.ingest(self.adapter,d)
         expr={'attributed':['speaker','advocates','conduct']}
         self.assertEqual(len(self.store.records('attributed_claim')),2)
+        self.add('unrelated')
         result=self.query(expr)
-        self.assertTrue(all(r['membership']=='conflicting' for r in result['rows']))
+        self.assertTrue(all(r['membership']=='conflicting' for r in result['rows'] if r['subject']!='unrelated'))
+        self.assertEqual(next(r for r in result['rows'] if r['subject']=='unrelated')['membership'],'unresolved')
         d=self.store.document('negative');d['deleted']=True;self.store.ingest(self.adapter,d)
         self.assertEqual(self.store.get(result['record'])['state'],'stale')
         self.assertEqual(self.query(expr,name='after')['rows'][0]['membership'],'supported')
@@ -203,6 +205,23 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(runtime.follow(self.adapter,stream,polls=1)['changed'],0)
         stream.write_text(json.dumps(document('three','feature','c'))+'\n')
         self.assertEqual(runtime.follow(self.adapter,stream,polls=1)['changed'],1)
+
+    def test_public_day_export_adapter_is_explicit_replay(self):
+        import importlib.util
+        import datetime as dt
+        spec=importlib.util.spec_from_file_location('public_day',Path(__file__).resolve().parents[1]/'scripts/test-public-day.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        start=int(dt.datetime(2026,11,7,tzinfo=dt.timezone.utc).timestamp())
+        path=Path(self.temp.name)/'synthetic-public-export.ndjson'
+        docs=[document('inside','x','v',created=start+1,dataset='reddit'),
+              document('outside','x','v',created=start-1,dataset='reddit')]
+        original=''.join(json.dumps(d)+'\n' for d in docs);path.write_text(original)
+        result=module.run(path,ROOT,'2026-11-07')
+        self.assertEqual(result['accepted'],1)
+        self.assertEqual(result['excludedOutsideWindowOrMissingTime'],1)
+        self.assertFalse(result['liveApiRead'])
+        self.assertEqual(result['selectors']['rows'][0]['membership'],'supported')
+        self.assertEqual(path.read_text(),original)
 
     def test_multi_domain_recursion(self):
         if not shutil.which('swipl'):self.skipTest('SWI required')

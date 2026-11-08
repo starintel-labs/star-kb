@@ -34,15 +34,19 @@ class Scope:
     project: str
     operation: str
     dataset: str
+    tenant: str = ""
 
     def __post_init__(self):
+        if not isinstance(self.tenant,str) or len(self.tenant)>128:
+            raise LearningError("invalid_tenant")
         for value in (self.project, self.operation, self.dataset):
             if not isinstance(value, str) or not 1 <= len(value) <= 128:
                 raise LearningError('invalid_scope')
 
     @property
     def key(self):
-        return canonical([self.project, self.operation, self.dataset])
+        parts=[self.project,self.operation,self.dataset]
+        return canonical([self.tenant,*parts] if self.tenant else parts)
 
 
 @dataclass(frozen=True)

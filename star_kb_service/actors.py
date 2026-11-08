@@ -31,7 +31,7 @@ class KnowledgeActors:
 
     @property
     def generation(self):
-        return 'sha256:'+digest(self.store.documents())
+        return 'sha256:'+digest([self.scope.key,self.store.documents()])
 
     def manifests(self):
         validator=Draft202012Validator({'$ref':'#/$defs/ActorManifest','$defs':self.adapter.defs})
@@ -51,7 +51,7 @@ class KnowledgeActors:
     def health(self):
         with self.lock:
             return {'state':'ready' if not self.closed else 'closed','generation':self.generation,
-                'scope':{'project':self.scope.project,'operation':self.scope.operation,'dataset':self.scope.dataset},
+                'scope':{'tenant':self.scope.tenant,'project':self.scope.project,'operation':self.scope.operation,'dataset':self.scope.dataset},
                 'operations':sorted(ACTOR_OPERATIONS),'canonicalSchema':'0.10.1',
                 'store':'local-replay-cache','liveCollection':False,'actors':self.manifests()}
 

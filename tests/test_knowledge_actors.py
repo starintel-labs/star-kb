@@ -108,6 +108,18 @@ class KnowledgeActorTests(unittest.TestCase):
         self.assertEqual(r['error'],'projection_revision_conflict')
         self.assertEqual(len(self.actor.manifests()),2)
 
+    def test_tenant_namespace_even_when_project_names_and_path_match(self):
+        from star_kb_service.actors import KnowledgeActors
+        from star_kb_learning.contracts import Scope
+        path=Path(self.temp.name)/'shared-cache.sqlite'
+        first=KnowledgeActors(ROOT,Scope('demo','replay','demo',tenant='one'),path)
+        second=KnowledgeActors(ROOT,Scope('demo','replay','demo',tenant='two'),path)
+        try:
+            first.invoke('document-project',{'document':self.document()})
+            self.assertEqual(second.store.documents(),[])
+            self.assertNotEqual(first.generation,second.generation)
+        finally:first.close();second.close()
+
     def test_actual_http_only_cli_without_sbcl(self):
         import selectors
         config={'scopes':[{'tenant':'tenant','dataset':'demo','learning':{
