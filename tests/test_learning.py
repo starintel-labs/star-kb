@@ -78,6 +78,7 @@ class LearningTests(unittest.TestCase):
                 'extensions':{'starKbScope':{'project':'demo','operation':'replay'}}}
             self.store.ingest(self.adapter,d)
         expr={'attributed':['speaker','advocates','conduct']}
+        self.assertEqual(len(self.store.records('attributed_claim')),2)
         result=self.query(expr)
         self.assertTrue(all(r['membership']=='conflicting' for r in result['rows']))
         d=self.store.document('negative');d['deleted']=True;self.store.ingest(self.adapter,d)

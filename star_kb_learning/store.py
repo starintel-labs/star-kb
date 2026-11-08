@@ -79,6 +79,17 @@ class Store:
             ids = [r[0] for r in self.db.execute('SELECT record FROM dependencies WHERE scope=? AND doc=?', (key, identifier))]
             for rid in ids:
                 self.db.execute("UPDATE records SET state='stale' WHERE scope=? AND id=?", (key, rid))
+            if document['dtype']=='claim' and not document.get('deleted',False):
+                attributed={'contract':VERSION,'kind':'attributed_claim',
+                    'document':identifier,'documentDigest':hashed,'span':'/claim',
+                    'statement':document['claim'],'claimant':document.get('claimantId'),
+                    'predicate':document.get('predicate'),'object':document.get('object'),
+                    'polarity':document.get('polarity'),'method':'canonical-claim/1',
+                    'assumption':'Source attribution only, not adjudicated truth.'}
+                aid='attributed_claim:'+digest(attributed)[:24]
+                self.db.execute('INSERT OR IGNORE INTO records VALUES(?,?,?,?,?)',
+                    (key,aid,'attributed_claim',canonical(attributed),'evaluated'))
+                self.db.execute('INSERT OR REPLACE INTO dependencies VALUES(?,?,?,?)',(key,aid,identifier,hashed))
             self.enqueue('discover', {'document': identifier, 'digest': hashed}, commit=False)
         return True
 

@@ -37,6 +37,7 @@ class Runtime:
             elif message['kind']=='evaluate':
                 result=self.discovery.evaluate(message['payload']['candidate'],message['payload']['pairs'],cancelled=cancel)
             else:raise LearningError('unsupported_message')
+            if cancel():raise LearningError('cancelled')
             self.store.settle(identifier,message['attempts'])
             return {'message':identifier,'state':'done','result':result}
         except LearningError as exc:

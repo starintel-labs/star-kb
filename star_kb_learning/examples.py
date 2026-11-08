@@ -38,7 +38,7 @@ def example(starlang, swipl='swipl'):
                 requests=planner.plan(hypothesis,store.get(hypothesis)['requirements'],budget=8)
                 replay=ReplayCollector(adapter,store,capability.name,held).execute(requests[0])
                 pairs=[]
-                for a,b,label in [(0,1,True),(2,3,True),(0,2,False),(4,6,False)]:
+                for a,b,label in [(0,1,True),(2,3,True),(4,6,False),(5,7,False)]:
                     label_id=domain+'-label-'+str(a)+'-'+str(b)
                     label_doc=document(label_id,'annotation','fixture',created=90)
                     label_doc['extensions']['comparisonLabel']={'left':held[a]['id'],'right':held[b]['id'],'equivalent':label}

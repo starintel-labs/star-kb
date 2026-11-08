@@ -38,7 +38,7 @@ class Planner:
             state='unresolved' if unresolved and not methods else 'requested' if unresolved else 'existing'
             body={'origin':origin,'unresolvedCondition':requirement,'desiredEvidence':requirement['desired'],
                 'existingDocuments':existing,'candidateMethods':methods,'scope':self.store.scope.key,
-                'budget':budget,'state':state,
+                'budget':budget,'planningState':state,
                 'reason':'independent/discriminating evidence required' if unresolved else 'available in local records',
                 'completion':['valid provenance and scope','support and refutation coverage','independent source labels'],
                 'stop':['budget exhausted','capability unavailable','discriminating evidence acquired'],

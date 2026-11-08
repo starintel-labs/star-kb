@@ -107,7 +107,7 @@ class Discovery:
             raise LearningError('evaluation_sample_limit')
         path=record['expression']['same'][0]
         discovery=set(record['discoveryDocuments']); sources=set(record['discoverySources'])
-        tp=fp=tn=fn=0;deps=[];seen=set();groups=set();rows=[]
+        tp=fp=tn=fn=0;deps=[];seen=set();groups=set();rows=[];used_documents=set();used_sources=set()
         for pair in pairs:
             if cancelled():raise LearningError('cancelled')
             if not isinstance(pair,dict) or set(pair)!={'left','right','equivalent','labelSource'} or type(pair['equivalent']) is not bool or not pair['labelSource']:
@@ -124,11 +124,15 @@ class Discovery:
             key=tuple(sorted((left['id'],right['id'])))
             if left['id']==right['id'] or key in seen:raise LearningError('duplicate_evaluation_pair')
             seen.add(key)
+            if used_documents.intersection(key):raise LearningError('dependent_evaluation_pairs')
+            used_documents.update(key)
             if discovery.intersection(key):raise LearningError('evaluation_leakage')
             for d in (left,right):
                 group=source_group(d)
                 if not group or group in sources:raise LearningError('source_separation_required')
+                if group in used_sources:raise LearningError('dependent_evaluation_sources')
                 groups.add(group)
+            used_sources.update(source_group(d) for d in (left,right))
             a,b=value_at(left,path),value_at(right,path)
             if a is None or b is None:raise LearningError('missing_evaluation_observation')
             predicted=canonical(a)==canonical(b);label=pair['equivalent']
