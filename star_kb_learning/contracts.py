@@ -12,7 +12,8 @@ KINDS = {'observation', 'attributed_claim', 'hypothesis', 'association',
          'definition', 'conclusion', 'selector', 'evidence_request', 'experiment'}
 DTYPES = {'document': 'Document', 'message': 'Message', 'claim': 'Claim',
           'relation': 'Relation', 'event': 'Event', 'org': 'Org', 'user': 'User',
-          'location': 'Location', 'observation': 'Observation', 'concept': 'Concept'}
+          'location': 'Location', 'observation': 'Observation', 'concept': 'Concept',
+          'socialmpost':'Socialmpost', 'social-media-post':'SocialMediaPost', 'source':'Source'}
 
 
 class LearningError(ValueError):

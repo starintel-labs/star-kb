@@ -152,3 +152,25 @@ The synthetic report also exercises recorded-region/creation-time selectors,
 publication-style interval records (using explicitly named `createdAt`), and
 self-examination of unresolved hypotheses and rejected concepts. A source label
 is a canonical annotation document, not an untraceable numeric score.
+
+## One-day public Reddit export test
+
+The execution environment could not retrieve `ingest.starintel.actor` (403 on
+health, capabilities and public search); no live-data result is claimed. If the
+operator supplies a **public-only canonical 0.10.1 Reddit NDJSON export** for a
+UTC day, the following local command validates schema, preserves original content
+digests, applies an explicit local replay-scope adapter, filters `/createdAt`,
+discovers candidates and executes a real bounded SWI day selector:
+
+```sh
+python3 scripts/test-public-day.py public-reddit-day.ndjson \
+  --starlang "$STARLANG_ROOT" --dataset reddit --day 2026-11-07 \
+  --output /tmp/public-reddit-day-results.json
+```
+
+Maximum admitted sample: 256 documents, 64 KiB/document, 2048 scanned export
+records. No credentials or private records are needed. This is an export replay,
+not direct live collection. It does not accept learned predicates without
+independent held-out evaluation labels, and does not label accounts as bots or
+extremists from metadata. `/createdAt` is the explicitly chosen recorded creation
+field, not collection time or a promise about every source's publication semantics.

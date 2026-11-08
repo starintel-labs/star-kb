@@ -48,7 +48,7 @@
         dontBuild = true;
         installPhase = ''
           mkdir -p "$out/share/star-kb" "$out/bin"
-          cp -R star_kb_service prolog_star_kb service "$out/share/star-kb/"
+          cp -R star_kb_service star_kb_learning prolog_star_kb kb service "$out/share/star-kb/"
           makeWrapper ${python}/bin/python3 "$out/bin/star-kb-service" \
             --add-flags "-m star_kb_service" \
             --set PYTHONPATH "$out/share/star-kb" \

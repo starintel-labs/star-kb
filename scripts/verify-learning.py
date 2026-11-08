@@ -14,5 +14,6 @@ from star_kb_learning.contracts import CanonicalAdapter
 CanonicalAdapter(a.starlang)
 env={**os.environ,'STARLANG_ROOT':a.starlang}
 subprocess.run([sys.executable,'-m','unittest','discover','-s','tests','-p','test_learning.py','-v'],cwd=root,env=env,check=True)
+subprocess.run([sys.executable,'-m','unittest','discover','-s','tests','-p','test_knowledge_actors.py','-v'],cwd=root,env=env,check=True)
 subprocess.run([sys.executable,'scripts/learning-demo.py','--starlang',a.starlang,'--output','/tmp/star-kb-learning-evaluation.json'],cwd=root,env=env,check=True)
 print('PASS: schema, actual SWI selectors, replay learning, held-out evaluation and recursive reuse')

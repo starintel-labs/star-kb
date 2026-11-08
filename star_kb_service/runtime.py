@@ -15,13 +15,16 @@ class Principal:
     identity: str
     tenant: str
     dataset: str
+    capabilities: tuple = ()
 
 
 class Service:
-    def __init__(self, credentials, engines):
+    def __init__(self, credentials, engines, actors=None):
         # Credentials arrive from operator environment/keyring only. Scope is
         # supplied by trusted catalog configuration, never the request body.
-        if not credentials or len(credentials) > 64 or not engines or len(engines) > 16:
+        self.actors = dict(actors or {})
+        scopes = set(engines) | set(self.actors)
+        if not credentials or len(credentials) > 64 or not scopes or len(scopes) > 16:
             raise ValueError("bounded credentials and scoped engines required")
         self.credentials = dict(credentials)
         identities = set()
@@ -29,7 +32,7 @@ class Service:
             if len(token) < 32 or principal.identity in identities:
                 raise ValueError("unique principals and tokens of at least 32 characters required")
             identities.add(principal.identity)
-            if (principal.tenant, principal.dataset) not in engines:
+            if (principal.tenant, principal.dataset) not in scopes:
                 raise ValueError("unknown credential scope")
         self.engines = dict(engines)
         self.replay = {}
@@ -89,18 +92,28 @@ class Service:
             return {"protocol": PROTOCOL, "id": None, "state": "failed", "error": "invalid_request"}
 
     def dispatch(self, principal, req):
-        engine = self.engines[(principal.tenant, principal.dataset)]
-        snapshot = engine.snapshot
+        engine = self.engines.get((principal.tenant, principal.dataset))
+        actor = self.actors.get((principal.tenant, principal.dataset))
+        snapshot = engine.snapshot if engine is not None else None
         op = req["operation"]
         common = ("protocol", "id", "operation")
+        if op in ("document-project", "prolog-query"):
+            if actor is None or op not in principal.capabilities:
+                raise Fault("capability_denied")
+            closed(req, (*common,"parameters"), ("generation",))
+            return actor.invoke(op, req["parameters"], req.get("generation"),lambda:self.closed)
         if op == "health":
             closed(req, common)
+            if engine is None:
+                return actor.health()
             live = engine.process is not None and engine.process.poll() is None
             return {"state": "ready" if live else "degraded", "generation": snapshot.generation,
                     "scope": {"tenant": principal.tenant, "dataset": principal.dataset},
                     "adapterCommit": STARLANG_COMMIT, "schemaDigest": SCHEMA_HASH,
                     "durable": False, **engine.metadata}
         if op == "relation-neighbors":
+            if engine is None:
+                raise Fault("unsupported_operation")
             closed(req, (*common, "generation", "parameters"), ("limits", "timeoutMs"))
             if req["generation"] != snapshot.generation:
                 raise Fault("stale_generation")
@@ -158,7 +171,7 @@ class Service:
             for operation in self.operations.values():
                 if operation["state"] == "pending":
                     operation["state"] = "cancelled"
-            for engine in self.engines.values():
+            for engine in [*self.engines.values(), *self.actors.values()]:
                 try:
                     engine.close()
                 except Exception as exc:

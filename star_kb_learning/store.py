@@ -13,7 +13,7 @@ from .contracts import VERSION, KINDS, LearningError, canonical, digest
 class Store:
     def __init__(self, path, scope, limits):
         self.scope, self.limits = scope, limits
-        self.db = sqlite3.connect(path, timeout=5)
+        self.db = sqlite3.connect(path, timeout=5, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
         PRAGMA journal_mode=WAL;
