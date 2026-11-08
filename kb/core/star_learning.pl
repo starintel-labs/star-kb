@@ -10,7 +10,7 @@
 proof(field(Path,Value), D, T,F,E) :-
     (value(D,Path,Value) -> T=1,E=[D] ; T=0,E=[]), F=0.
 proof(same(Path,Anchor), D,T,F,E) :-
-    (value(D,Path,V), value(Anchor,Path,V) -> T=1,E=[D,Anchor] ; T=0,E=[]), F=0.
+    (value(D,Path,V), V \== null, value(Anchor,Path,V) -> T=1,E=[D,Anchor] ; T=0,E=[]), F=0.
 proof(attributed(Who,P,O), D,T,F,E) :-
     (D=Who;claim(Who,P,O,_,D)),!,
     findall(R,claim(Who,P,O,positive,R),Ps),

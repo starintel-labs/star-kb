@@ -236,6 +236,46 @@ class LearningTests(unittest.TestCase):
         self.store.record('hypothesis',{'question':'new research'},['a'])
         self.assertEqual(self.store.get(r['record'])['state'],'stale')
 
+    def test_null_equality_is_unresolved(self):
+        self.add('a',None);self.add('b',None)
+        r=self.query({'same':['/extensions/features/upstream','a']})
+        self.assertTrue(all(row['membership']=='unresolved' for row in r['rows']))
+
+    def test_independent_labels_cannot_come_from_any_evaluated_source(self):
+        for i in range(4):self.add('train'+str(i),str(i//2))
+        learner=Discovery(self.store);candidate=learner.discover()[0]['candidate']
+        held=[self.add('held'+str(i),str(i//2)) for i in range(8)]
+        pairs=[]
+        for n,(a,b,equivalent) in enumerate([(0,1,True),(2,3,True),(4,6,False),(5,7,False)]):
+            label=document('annotation'+str(n),'annotation','fixture')
+            label['extensions']['comparisonLabel']={'left':held[a]['id'],'right':held[b]['id'],'equivalent':equivalent}
+            self.store.ingest(self.adapter,label)
+            pairs.append({'left':held[a]['id'],'right':held[b]['id'],'equivalent':equivalent,'labelSource':label['id']})
+        first=self.store.document(held[0]['id'])
+        first['extensions']['comparisonLabel']=self.store.document('annotation0')['extensions']['comparisonLabel']
+        self.store.ingest(self.adapter,first)
+        self_labelled=[{**p,'labelSource':held[0]['id']} if n==0 else p for n,p in enumerate(pairs)]
+        with self.assertRaisesRegex(LearningError,'label_source_separation'):learner.evaluate(candidate,self_labelled)
+        label=self.store.document('annotation0');label['provenance']['independentSource']=held[7]['provenance']['independentSource']
+        self.store.ingest(self.adapter,label)
+        with self.assertRaisesRegex(LearningError,'label_source_separation'):learner.evaluate(candidate,pairs)
+        self.assertEqual(self.store.get(candidate)['state'],'proposed')
+
+    def test_expired_last_attempt_becomes_terminal_and_releases_queue(self):
+        store=Store(Path(self.temp.name)/'exhausted.sqlite',self.scope,Limits(attempts=1,queue=1))
+        store.ingest(self.adapter,document('first','x','v'))
+        abandoned=store.claim(lease_seconds=-1)
+        store.ingest(self.adapter,document('second','x','v'))
+        row=store.db.execute('SELECT state,error FROM messages WHERE id=?',(abandoned['id'],)).fetchone()
+        self.assertEqual(row['state'],'failed')
+        self.assertEqual(row['error'],'lease_expired_after_attempt_budget')
+        self.assertTrue(store.cancelled(abandoned['id'],abandoned['attempts']))
+        second=store.claim(lease_seconds=-1);store.close()
+        resumed=Store(Path(self.temp.name)/'exhausted.sqlite',self.scope,Limits(attempts=1,queue=1))
+        self.assertIsNone(resumed.claim())
+        self.assertEqual(resumed.db.execute('SELECT state FROM messages WHERE id=?',(second['id'],)).fetchone()[0],'failed')
+        resumed.close()
+
     def test_multi_domain_recursion(self):
         if not shutil.which('swipl'):self.skipTest('SWI required')
         report=example(ROOT)

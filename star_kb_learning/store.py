@@ -142,6 +142,11 @@ class Store:
         return [dict(r) for r in self.db.execute('SELECT doc,hash FROM dependencies WHERE scope=? AND record=? ORDER BY doc',
                                                (self.scope.key, identifier))]
 
+    def _recover_exhausted(self):
+        self.db.execute("UPDATE messages SET state='failed',error='lease_expired_after_attempt_budget',lease=0 "
+                        "WHERE scope=? AND state='running' AND lease<? AND attempts>=?",
+                        (self.scope.key,time.time(),self.limits.attempts))
+
     def enqueue(self, kind, payload, commit=True):
         if kind not in {'discover', 'evaluate', 'plan'}:
             raise LearningError('unsupported_message')
@@ -151,6 +156,7 @@ class Store:
             return identifier
         if self.db.execute('SELECT count(*) FROM messages WHERE scope=?',(self.scope.key,)).fetchone()[0]>=self.limits.observations:
             raise LearningError('journal_limit')
+        self._recover_exhausted()
         count = self.db.execute("SELECT count(*) FROM messages WHERE scope=? AND state IN ('pending','running')", (self.scope.key,)).fetchone()[0]
         if count >= self.limits.queue:
             raise LearningError('queue_limit')
@@ -164,6 +170,7 @@ class Store:
         # BEGIN IMMEDIATE is an atomic claim across connections/processes.
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            self._recover_exhausted()
             row = self.db.execute("SELECT * FROM messages WHERE scope=? AND (state='pending' OR (state='running' AND lease<?)) AND attempts<? ORDER BY rowid LIMIT 1",
                                   (self.scope.key, time.time(), self.limits.attempts)).fetchone()
             if row:
@@ -185,7 +192,7 @@ class Store:
 
     def cancelled(self, identifier, attempt=None):
         row = self.db.execute('SELECT state,attempts FROM messages WHERE scope=? AND id=?', (self.scope.key, identifier)).fetchone()
-        return row is None or row[0] == 'cancelled' or (attempt is not None and row[1] != attempt)
+        return row is None or row[0] == 'cancelled' or (attempt is not None and (row[1] != attempt or row[0] != 'running'))
 
     def export(self, identifier):
         record = self.get(identifier)

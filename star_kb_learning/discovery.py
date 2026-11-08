@@ -105,6 +105,15 @@ class Discovery:
         if record['state']!='proposed':raise LearningError('candidate_not_proposed')
         if not isinstance(pairs,list) or not minimum<=len(pairs)<=self.store.limits.documents:
             raise LearningError('evaluation_sample_limit')
+        for pair in pairs:
+            if (not isinstance(pair,dict) or set(pair)!={'left','right','equivalent','labelSource'}
+                    or type(pair['equivalent']) is not bool
+                    or any(not isinstance(pair[k],str) or not pair[k] for k in ('left','right','labelSource'))):
+                raise LearningError('independent_labels_required')
+        evaluation_ids={pair[k] for pair in pairs for k in ('left','right')}
+        evaluation_documents=[self.store.document(i) for i in evaluation_ids]
+        if any(d is None for d in evaluation_documents):raise LearningError('missing_evaluation_document')
+        evaluation_sources={source_group(d) for d in evaluation_documents}
         path=record['expression']['same'][0]
         discovery=set(record['discoveryDocuments']); sources=set(record['discoverySources'])
         tp=fp=tn=fn=0;deps=[];seen=set();groups=set();rows=[];used_documents=set();used_sources=set()
@@ -116,7 +125,8 @@ class Discovery:
             if label_record is None or label_record.get('extensions',{}).get('comparisonLabel') != {
                     'left':pair['left'],'right':pair['right'],'equivalent':pair['equivalent']}:
                 raise LearningError('label_provenance_required')
-            if not source_group(label_record) or source_group(label_record) in sources:
+            if (pair['labelSource'] in evaluation_ids or not source_group(label_record)
+                    or source_group(label_record) in sources | evaluation_sources):
                 raise LearningError('label_source_separation_required')
             deps.append(pair['labelSource'])
             left,right=(self.store.document(pair[k]) for k in ('left','right'))
