@@ -182,3 +182,65 @@ dependency digests. `any` retains its canonical-document meaning rather than
 silently adding generated research records. New artifacts and lifecycle changes
 invalidate affected cached conclusions. Service cache namespaces additionally
 include the authenticated tenant, even when project/operation names coincide.
+
+## Text-derived passage discovery (second bounded synthesis method)
+
+The ingestion supervisor now also discovers repeated passages directly from
+`/rawContent`; it does not need an operator-populated `extensions.features`
+field. `Discovery.discover_passages` creates a proposed definition and hypothesis
+when six contiguous case-folded Unicode word tokens recur in multiple documents
+and at least one contrasting document exists. Quotation, common boilerplate,
+genre, chance and shared upstream text remain competing explanations.
+
+The new closed selector primitive is:
+
+```json
+{"passage":["/rawContent",6,"anchor-document-id"]}
+```
+
+A learned definition substitutes its `anchorDocument` parameter into that same
+primitive. This is an operational lexical relation, **not proof of common
+ancestry, coordination, deception, nationality, or independent corroboration**.
+Acceptance still requires external annotations, source-disjoint held-out pairs,
+both label classes, and the existing measured baseline gate. The method tests
+annotation alignment on that finite sample, not whether a source is truthful.
+
+`passages.py` specifies tokenization exactly: Unicode word runs (including
+internal straight/curly apostrophes), case folding, punctuation/whitespace ignored,
+no stemming/fuzzy matching. Limits are 2048 tokens and 65536 Unicode code points
+per field, 3–16 tokens per window, and the scope's observation bound across cached
+windows. Exceeding a text/window bound returns `input_limit`, not a membership
+negative or a partially evaluated sample. Each query compares only its requested
+anchors; there is no implicit all-pairs corpus scan. Projection and Prolog resource
+limits remain enforced. Spans are start/end-exclusive Unicode code-point offsets
+into the retained original source field. `passageEvidence` reports both source
+spans, path, token count, normalization method and normalized passage digest.
+
+Changed/retracted source documents invalidate dependent accepted definitions and
+selector results. The runtime skips unchanged generations; existing accepted
+predicate and selector versions are never silently rewritten. Text is evidence,
+never an executable program or instruction.
+
+Evidence plans additionally retain competing explanations, discriminating roles,
+source-group exclusions and each collector's supplied/missing inputs. A capability
+with missing inputs is not actionable and leaves the request unresolved. Registry
+matching neither grants access nor executes collection; even an actionable live
+method needs the separately authorized collector boundary.
+
+Run the text-only experiment locally:
+
+```sh
+python3 scripts/passage-demo.py --starlang "$STARLANG_ROOT" \
+  --output /tmp/passage-results.json
+```
+
+The two synthetic domains (repeated release passages and technical procedures)
+use text-only discovery, independent fixture annotations for held-out evaluation,
+and actual SWI-Prolog learned-predicate reuse in a later investigation. At an equal
+three-document acquisition budget, both examples obtain three fixture passage
+groups versus one for chronological retrieval **and** exact full-content hash
+deduplication. Redundancy is 0% versus 66.7%. The learned selector spends additional
+compute; the report records Prolog calls and elapsed time and does not claim equal
+compute or production intelligence gains. These fixtures do not replace the still
+blocked public Reddit integration test. No production collection/deployment or
+provider call is performed.

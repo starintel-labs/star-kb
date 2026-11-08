@@ -7,6 +7,7 @@ It does not interpret a shared field as nationality, intent, or coordination.
 from collections import defaultdict
 import time
 from .contracts import LearningError, canonical, digest
+from .passages import token_windows, overlap, METHOD
 
 
 def value_at(document, path):
@@ -74,6 +75,60 @@ class Discovery:
             if len(result)>=self.store.limits.candidates:break
         return result
 
+    def discover_passages(self, identifiers=None, path='/rawContent', minimum=6,
+                          cancelled=lambda:False):
+        """Invent a reusable overlap concept from actual repeated text.
+
+        A passage is a lexical observation, not proof of source ancestry. All
+        supporting/contrasting documents and exact source spans are retained.
+        """
+        if not isinstance(path,str) or not path.startswith('/') or len(path)>256:
+            raise LearningError('invalid_path')
+        start=time.monotonic();docs=self.store.documents()
+        if identifiers is not None:
+            wanted=set(identifiers);docs=[d for d in docs if d['id'] in wanted]
+            if len(docs)!=len(wanted):raise LearningError('missing_discovery_document')
+        index=defaultdict(dict);sample={};dependencies=[];window_count=0
+        for d in docs:
+            if cancelled():raise LearningError('cancelled')
+            if time.monotonic()-start>self.store.limits.seconds:raise LearningError('discovery_budget')
+            text=value_at(d,path)
+            if not isinstance(text,str):continue
+            windows=token_windows(text,minimum);window_count+=len(windows)
+            if window_count>self.store.limits.observations:raise LearningError('passage_input_limit')
+            dependencies.append(d['id']);sample[d['id']]=windows
+            for words,span in windows.items():
+                index[words][d['id']]=span
+        repeated=[(words,matches) for words,matches in sorted(index.items()) if len(matches)>1]
+        # Require an observed contrast; a corpus of identical boilerplate alone
+        # cannot motivate a discriminating binary concept.
+        witness=next(((words,matches) for words,matches in repeated if len(matches)<len(sample)),None)
+        if witness is None:return []
+        words,matches=witness
+        body={'name':'shared_passage_'+digest([path,minimum,METHOD])[:12], 'version':1,
+            'expression':{'passage':[path,minimum,'parameter']}, 'method':'bounded-passage-synthesis/1',
+            'meaning':f'Two documents share at least {minimum} contiguous case-folded word tokens at {path}.',
+            'parameters':['anchorDocument'],'subjectType':'document',
+            'discoveryDocuments':dependencies,
+            'discoverySources':sorted({source_group(d) for d in docs if source_group(d)}),
+            'supportingExamples':[sorted(matches)[:2]],
+            'sourceSpans':[{'document':i,'path':path,'span':span,'offsetUnit':'unicode-code-point',
+                            'endExclusive':True,'method':METHOD} for i,span in sorted(matches.items())],
+            'counterexampleDocuments':sorted(set(sample)-set(matches))[:4],
+            'applicability':'Exact normalized text overlap only. Common boilerplate, quotation, genre, or shared upstream text may explain it; no coordination, intent, or independence inference.',
+            'requirements':[{'path':path,'role':'comparison','desired':'source-disjoint positive and negative independently annotated text pairs'},
+                            {'path':path,'role':'context','desired':'original context distinguishing quotation, boilerplate and shared source'},
+                            {'path':path,'role':'counterexample','desired':'independently annotated non-equivalent documents sharing common language'}]}
+        rid=self.store.record('definition',body,dependencies)
+        hid=self.store.record('hypothesis',{'candidate':rid,'initiatingDocuments':dependencies,
+            'proposedExplanation':body['meaning'],
+            'alternatives':['common boilerplate','direct quotation','common genre','shared upstream source','chance overlap'],
+            'expectedConsequences':['held-out overlap matches independent comparison annotations'],
+            'refutation':['annotated non-equivalent pairs match, or equivalent pairs lack overlap'],
+            'evaluationMethod':'source-disjoint labelled pairs versus constant baseline',
+            'requirements':body['requirements']},dependencies)
+        return [{'candidate':rid,'hypothesis':hid}]
+
     def propose(self, payload, method='frozen-model-proposal/1'):
         """Optional frozen LLM/plugin proposals remain untrusted candidates.
 
@@ -114,7 +169,9 @@ class Discovery:
         evaluation_documents=[self.store.document(i) for i in evaluation_ids]
         if any(d is None for d in evaluation_documents):raise LearningError('missing_evaluation_document')
         evaluation_sources={source_group(d) for d in evaluation_documents}
-        path=record['expression']['same'][0]
+        expression=record['expression']
+        if set(expression) not in ({'same'},{'passage'}):raise LearningError('unsupported_synthesis_grammar')
+        path=next(iter(expression.values()))[0]
         discovery=set(record['discoveryDocuments']); sources=set(record['discoverySources'])
         tp=fp=tn=fn=0;deps=[];seen=set();groups=set();rows=[];used_documents=set();used_sources=set()
         for pair in pairs:
@@ -145,7 +202,11 @@ class Discovery:
             used_sources.update(source_group(d) for d in (left,right))
             a,b=value_at(left,path),value_at(right,path)
             if a is None or b is None:raise LearningError('missing_evaluation_observation')
-            predicted=canonical(a)==canonical(b);label=pair['equivalent']
+            if 'passage' in expression:
+                if not isinstance(a,str) or not isinstance(b,str):raise LearningError('missing_evaluation_observation')
+                predicted=overlap(token_windows(a,expression['passage'][1]),token_windows(b,expression['passage'][1])) is not None
+            else:predicted=canonical(a)==canonical(b)
+            label=pair['equivalent']
             if predicted and label:tp+=1
             elif predicted:fp+=1
             elif label:fn+=1
@@ -183,7 +244,7 @@ class Discovery:
         if old['kind']!='definition':raise LearningError('not_definition')
         from .selectors import compile_expression
         compile_expression(expression,{},bound=self.store.limits.depth)
-        if set(expression)!= {'same'}:raise LearningError('unsupported_synthesis_grammar')
+        if set(expression) not in ({'same'},{'passage'}):raise LearningError('unsupported_synthesis_grammar')
         body={k:v for k,v in old.items() if k not in ('contract','kind','id','state')}
         body.update(version=old['version']+1,expression=expression,meaning=meaning,revises=candidate)
         return self.store.record('definition',body,[r['doc'] for r in self.store.dependencies(candidate)])

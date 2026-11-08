@@ -35,7 +35,8 @@ def example(starlang, swipl='swipl'):
                 candidate=discovered[0]['candidate'];hypothesis=discovered[0]['hypothesis']
                 capability=Capability('synthetic-comparison',(path,),('source-labelled sample',),8,'fixture only','local replay','replay')
                 planner=Planner(store,[capability])
-                requests=planner.plan(hypothesis,store.get(hypothesis)['requirements'],budget=8)
+                requirements=[{**r,'inputs':{'source-labelled sample':'synthetic held-out pairs'}} for r in store.get(hypothesis)['requirements']]
+                requests=planner.plan(hypothesis,requirements,budget=8)
                 replay=ReplayCollector(adapter,store,capability.name,held).execute(requests[0])
                 pairs=[]
                 for a,b,label in [(0,1,True),(2,3,True),(4,6,False),(5,7,False)]:
@@ -88,3 +89,86 @@ def example(starlang, swipl='swipl'):
                     'rejectedExperiment':rejected,'liveCollection':'not configured',
                     'knownLimits':'Operational definitions and finite fixture evaluation, not ASI or general scientific discovery.'}
         finally:store.close()
+
+
+def passage_example(starlang, swipl='swipl'):
+    """Two text-only domains. Hidden fixture groups are evaluation labels only."""
+    from .contracts import digest
+    adapter=CanonicalAdapter(starlang)
+    reports=[]
+    for domain in ('release_passages','technical_procedures'):
+        with tempfile.TemporaryDirectory(prefix='passage-demo-') as temp:
+            store=Store(Path(temp)/'kb.sqlite',Scope('demo','replay','demo'),Limits(steps=100000))
+            try:
+                def textdoc(identifier,text):
+                    d=document(identifier,'unused','unused');d['extensions'].pop('features')
+                    d['rawContent']=text;store.ingest(adapter,d);return d
+                train=[textdoc('train-a','silver rivers carry tiny boats toward distant harbors'),
+                       textdoc('train-b','quotation: SILVER rivers carry tiny boats toward distant harbors.'),
+                       textdoc('train-c','bright deserts shelter ancient sleeping emerald creatures')]
+                learner=Discovery(store);found=learner.discover_passages([d['id'] for d in train])
+                candidate=found[0]['candidate'];hypothesis=found[0]['hypothesis']
+                planner=Planner(store)
+                requests=planner.plan(hypothesis,store.get(hypothesis)['requirements'])
+                held_text=['pale moons illuminate quiet gardens beneath clear skies',
+                           'Pale moons illuminate quiet gardens beneath clear skies!',
+                           'bronze keys unlock the old hidden stone doorway',
+                           'quote: Bronze keys unlock the old hidden stone doorway.',
+                           'wild birds gather beside tall eastern marble towers',
+                           'deep oceans conceal several ancient empty mountain cities',
+                           'rainy windows overlook bright yellow rooftops every evening',
+                           'distant sunsets warm each quiet grassy northern hillside']
+                for i,text in enumerate(held_text):textdoc('held-'+str(i),text)
+                pairs=[]
+                for a,b,label in [(0,1,True),(2,3,True),(4,5,False),(6,7,False)]:
+                    ann=textdoc('annotation-'+str(a),'Independent synthetic pair annotation.')
+                    ann['extensions']['comparisonLabel']={'left':'held-'+str(a),'right':'held-'+str(b),'equivalent':label}
+                    store.ingest(adapter,ann)
+                    pairs.append({**ann['extensions']['comparisonLabel'],'labelSource':ann['id']})
+                evaluation=learner.evaluate(candidate,pairs)
+                passages={'release_passages':['purple herons cross the winter river before sunrise',
+                            'golden ships enter a distant harbor after sunset',
+                            'quiet forests shelter small woodland creatures throughout winter'],
+                          'technical_procedures':['restart the worker after flushing its pending journal',
+                            'verify each checksum before restoring the archived snapshot',
+                            'cancel the request before releasing its active lease']}[domain]
+                later=[];fixture_groups={}
+                for group,text in enumerate(passages):
+                    for revision in range(3):
+                        d=textdoc(f'later-{group}-{revision}',f'edition {revision}: {text}.')
+                        later.append(d);fixture_groups[d['id']]=group
+                selectors=Selectors(store,swipl);selected=[];calls=0;explanations=[]
+                started=time.monotonic()
+                for d in later:
+                    if len(selected)>=3:break
+                    redundant=False
+                    for anchor in selected:
+                        sid=selectors.create('compare-'+d['id']+'-'+anchor,1,
+                            {'learned':[candidate,1,anchor]},'Diversify exact lexical passages, not verified sources.')
+                        result=selectors.evaluate(sid);calls+=1
+                        if result['execution']!='complete':raise RuntimeError(result)
+                        row=next(r for r in result['rows'] if r['subject']==d['id'])
+                        explanations.append({'decision':row,'passages':[r for r in result['passageEvidence'] if r['subject']==d['id']]})
+                        if row['membership']=='supported':redundant=True;break
+                    if not redundant:selected.append(d['id'])
+                baseline=[d['id'] for d in later[:3]]
+                exact=[];hashes=set()
+                for d in later:
+                    key=digest(d['rawContent'])
+                    if key not in hashes:hashes.add(key);exact.append(d['id'])
+                    if len(exact)==3:break
+                def metrics(ids):
+                    groups=len({fixture_groups[i] for i in ids})
+                    return {'documents':ids,'fixtureGroups':groups,'redundancy':1-groups/len(ids)}
+                result={'mode':'synthetic-text-replay','domain':domain,'candidate':candidate,
+                    'hypothesis':hypothesis,'evidenceRequests':requests,'evaluation':evaluation,
+                    'budgetDocuments':3,'chronologicalBaseline':metrics(baseline),
+                    'exactDocumentHashBaseline':metrics(exact),'learned':metrics(selected),
+                    'compute':{'prologCalls':calls,'elapsedSeconds':time.monotonic()-started},
+                    'explanations':explanations,
+                    'limitations':'Fixture passage-group diversity only. Overlap is not evidence of coordination or actual source dependence. Equal acquisition budget, not equal compute.'}
+                eid=store.record('experiment',{'procedure':'text-passage-diversification/1',**result},
+                    [d['id'] for d in store.documents()],state='evaluated')
+                reports.append({**result,'experiment':eid})
+            finally:store.close()
+    return {'reports':reports,'liveCollection':False,'modelWeightsUpdated':False}

@@ -27,6 +27,8 @@ class Runtime:
                 checkpoint=self.store.db.execute('SELECT value FROM checkpoints WHERE scope=? AND name=?',
                                                 (self.store.scope.key,'discovery')).fetchone()
                 result=[] if checkpoint and checkpoint[0]==generation else self.discovery.discover(cancelled=cancel)
+                if (not checkpoint or checkpoint[0]!=generation) and len(result)<self.store.limits.candidates:
+                    result+=self.discovery.discover_passages(cancelled=cancel)
                 for item in result:
                     hypothesis=self.store.get(item['hypothesis'])
                     self.planner.plan(item['hypothesis'],hypothesis['requirements'])
