@@ -223,6 +223,19 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(result['selectors']['rows'][0]['membership'],'supported')
         self.assertEqual(path.read_text(),original)
 
+    def test_select_learning_hypotheses_and_rules_with_source_explanation(self):
+        self.add()
+        h=self.store.record('hypothesis',{'question':'needs discriminating evidence'},['a'])
+        s=self.selectors()
+        sid=s.create('unresolved-research',1,{'field':['/state','proposed']},'Review unresolved research',subject_type='hypothesis')
+        r=s.evaluate(sid)
+        self.assertEqual(len(r['rows']),1)
+        self.assertEqual(r['rows'][0]['subject'],h)
+        self.assertEqual(r['rows'][0]['membership'],'supported')
+        self.assertEqual(r['evidenceDetails'][h]['sourceDependencies'][0]['doc'],'a')
+        self.store.record('hypothesis',{'question':'new research'},['a'])
+        self.assertEqual(self.store.get(r['record'])['state'],'stale')
+
     def test_multi_domain_recursion(self):
         if not shutil.which('swipl'):self.skipTest('SWI required')
         report=example(ROOT)

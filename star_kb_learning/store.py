@@ -105,6 +105,8 @@ class Store:
                 raise LearningError('immutable_record_conflict')
             if not existing and self.db.execute('SELECT count(*) FROM records WHERE scope=?',(key,)).fetchone()[0]>=self.limits.observations:
                 raise LearningError('record_limit')
+            if not existing and kind!='conclusion':
+                self.db.execute("UPDATE records SET state='stale' WHERE scope=? AND kind='conclusion'", (key,))
             self.db.execute('INSERT OR IGNORE INTO records VALUES(?,?,?,?,?)',
                             (key, identifier, kind, canonical(payload), state))
             for doc in dependencies:
@@ -134,8 +136,7 @@ class Store:
             raise LearningError('invalid_transition:' + old + '->' + target)
         with self.db:
             self.db.execute('UPDATE records SET state=? WHERE scope=? AND id=?', (target, self.scope.key, identifier))
-            if target in ('retired','stale'):
-                self.db.execute("UPDATE records SET state='stale' WHERE scope=? AND kind='conclusion'", (self.scope.key,))
+            self.db.execute("UPDATE records SET state='stale' WHERE scope=? AND kind='conclusion'", (self.scope.key,))
 
     def dependencies(self, identifier):
         return [dict(r) for r in self.db.execute('SELECT doc,hash FROM dependencies WHERE scope=? AND record=? ORDER BY doc',

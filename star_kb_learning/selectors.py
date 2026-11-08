@@ -4,7 +4,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from prolog_star_kb.projection import Fact, prolog_term
+from prolog_star_kb.projection import Fact, prolog_term, iter_scalars
 from .contracts import LearningError, canonical, digest
 
 MODULE = Path(__file__).resolve().parents[1] / 'kb/core/star_learning.pl'
@@ -80,6 +80,16 @@ class Selectors:
         expression = compile_expression(selector['expression'], definitions, bound=self.store.limits.depth)
         documents = self.store.documents()
         facts = []
+        # Learning artifacts are an explicit subject family, not silently mixed
+        # into the canonical-document universe of an existing selector.
+        record_kinds={'hypothesis','definition','association','evidence_request','experiment'}
+        subjects=self.store.records(selector['subjectType']) if selector['subjectType'] in record_kinds else []
+        if len(subjects)>self.store.limits.documents:
+            return {'execution':'sample_limit','rows':[]}
+        for record in subjects:
+            facts.append(Fact('star_learning:subject',(record['id'],record['kind'])).render())
+            for path,value in iter_scalars(record):
+                facts.append(Fact('star_learning:value',(record['id'],path,canonical(value))).render())
         for d in documents:
             facts.append(Fact('star_learning:subject',(d['id'],d['dtype'])).render())
         for row in self.store.db.execute('SELECT doc,path,value FROM observations WHERE scope=? ORDER BY doc,path', (self.store.scope.key,)):
@@ -131,6 +141,12 @@ class Selectors:
             'observedAt':d.get('observedAt'),'publicationTime':d.get('createdAt'),
             'extractionMethod':'canonical-json-pointer/1',
             'scope':self.store.scope.key} for d in documents if d['id'] in evidence_ids}
+        for record in subjects:
+            if record['id'] in evidence_ids:
+                result['evidenceDetails'][record['id']]={'recordId':record['id'],'kind':record['kind'],
+                    'version':record.get('version'),'state':record['state'],'digest':digest(record),
+                    'sourceDependencies':self.store.dependencies(record['id']),
+                    'extractionMethod':'typed-learning-record/1','scope':self.store.scope.key}
         result['definition']=selector['expression']
         result['assumptions']=['Open-world absence is unresolved.', 'Attributed statements are not adjudicated facts.']
         # Cache explanations with the complete bounded input set: adding or

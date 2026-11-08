@@ -174,3 +174,11 @@ not direct live collection. It does not accept learned predicates without
 independent held-out evaluation labels, and does not label accounts as bots or
 extremists from metadata. `/createdAt` is the explicitly chosen recorded creation
 field, not collection time or a promise about every source's publication semantics.
+
+Learning artifacts can also be selected explicitly with subject types `hypothesis`,
+`definition`, `association`, `evidence_request` and `experiment`. Their JSON paths
+include `/state` and their typed record fields; result explanations carry source
+dependency digests. `any` retains its canonical-document meaning rather than
+silently adding generated research records. New artifacts and lifecycle changes
+invalidate affected cached conclusions. Service cache namespaces additionally
+include the authenticated tenant, even when project/operation names coincide.
