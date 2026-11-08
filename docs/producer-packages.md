@@ -62,3 +62,12 @@ or live provider is required by this installed-package check.
 Actual execution evidence must come from exact-head Nix CI; source-only tests do
 not substitute for installed-package proof. Remote readiness, proactive experts,
 RabbitMQ actor transport and deployment remain separate milestones.
+
+## Learning controller
+
+`star-kb-learn` is exported with the tools closure and uses the same pinned
+StarLang schema source. It does not load a provider or connect a collector at
+startup. `--help` works outside a checkout. Source CI runs the mandatory
+`verify-learning.py` acceptance gate with actual SWI and the pinned schema;
+missing dependencies fail that gate instead of skipping it. See
+`continuous-learning.md` for replay commands and limits.

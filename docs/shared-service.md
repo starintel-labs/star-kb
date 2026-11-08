@@ -264,3 +264,70 @@ five-second ZMQ query, invokes the CLI shutdown path, and checks both listener
 threads and every owned SBCL/SWI session are gone. It reproduced the former
 three-second join exception before the fix. A separate controlled listener-error
 case verifies that engine cleanup still runs and the error remains observable.
+
+## Canonical document/prolog actors (2026-11-08 slice)
+
+The existing dispatcher now accepts a configured **learning scope** instead of a
+legacy relation-only SBCL snapshot. It serves two named actor-message operations
+through the same authenticated `/v1/kb` HTTP and ZMQ transport boundary:
+
+- `document-project`: validate a canonical 0.10.1 document, project every JSON
+  Pointer through the existing lossless projector, retain its scoped replay copy
+  and return facts plus source digest/provenance. This does **not** write or
+  promote a document to the canonical StarIntel server.
+- `prolog-query`: compile a closed, versioned selector AST into the fixed bounded
+  SWI module and return four-valued membership with source explanations. No raw
+  Prolog goal, module path, shell command or generated executable code is accepted.
+
+These are actual local actor handlers, not a claim that RabbitMQ actors have been
+deployed. Each operation is capability-gated in addition to the existing token
+scope. Old credentials receive neither capability automatically. The operation
+scope comes only from operator configuration and cannot be supplied in a request.
+
+Example operator configuration (token **reference**, never a saved token value):
+
+```json
+{"scopes":[{"tenant":"operator","dataset":"reddit","learning":{
+ "project":"public-analysis","operation":"public-reddit","path":"/tmp/reddit-kb.sqlite",
+ "documents":[]}}],"credentials":[{"identity":"producer","tenant":"operator",
+ "dataset":"reddit","tokenEnv":"STAR_KB_PRODUCER_TOKEN",
+ "capabilities":["document-project","prolog-query"]}]}
+```
+
+Documents must carry `extensions.starKbScope` with the configured project and
+operation, as well as the canonical dataset. There is no implicit legacy schema
+upgrade. `health` returns the canonical replay generation. `prolog-query` requires
+that generation, and rejects a stale generation before execution.
+
+```json
+{"protocol":"star.kb.service/1","id":"project-1","operation":"document-project",
+ "parameters":{"document":{"id":"example","dataset":"reddit","dtype":"document",
+ "schemaVersion":"0.10.1","language":"en","extensions":{"starKbScope":{
+ "project":"public-analysis","operation":"public-reddit"}}}}}
+```
+
+```json
+{"protocol":"star.kb.service/1","id":"query-1","operation":"prolog-query",
+ "generation":"sha256:<from-health-or-project>","parameters":{"selector":{
+ "name":"recorded-language","version":1,"purpose":"Recorded language metadata",
+ "expression":{"field":["/language","en"]}}}}
+```
+
+Run the same CLI with `--http-only` when ZMQ is unavailable or not wanted. A
+learning-only scope does not require SBCL, though it does require actual SWI.
+The existing relation-neighbor scopes still use the pinned StarLang/SBCL adapter.
+No duplicate HTTP server, authentication stack or arbitrary evaluator is added.
+Responses and request replay remain bounded by the existing dispatcher. Actor
+queries are synchronous and bounded; shutdown cancellation kills the SWI query.
+Same-transport in-flight request cancellation remains limited by the existing
+serialized dispatcher and is not presented as asynchronous actor delivery.
+
+`tests/test_knowledge_actors.py` exercises actual HTTP document projection and
+actual SWI query, capability/scope rejection, restart cache reconstruction and the
+real HTTP-only CLI. This does not prove remote TLS, RabbitMQ, or live collection.
+
+Updates of an already projected document require `parameters.previousDigest`
+matching its current content digest. Identical redelivery is idempotent without a
+new lease; stale/differing redelivery is rejected. Health also exposes two
+schema-valid canonical ActorManifest records describing the installed handlers.
+They are local capability manifests, not automatic remote actor registration.

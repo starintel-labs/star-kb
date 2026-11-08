@@ -20,9 +20,13 @@
         dontBuild = true;
         installPhase = ''
           mkdir -p "$out/share/star-kb" "$out/bin"
-          cp -R prolog_star_kb kb tools "$out/share/star-kb/"
+          cp -R prolog_star_kb star_kb_learning star_kb_service kb tools "$out/share/star-kb/"
           makeWrapper ${python}/bin/python3 "$out/bin/prolog-star-kb" \
             --add-flags "$out/share/star-kb/tools/prolog-star-kb" \
+            --prefix PYTHONPATH : "$out/share/star-kb" \
+            --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.swi-prolog ]}
+          makeWrapper ${python}/bin/python3 "$out/bin/star-kb-learn" \
+            --add-flags "-m star_kb_learning --starlang ${logicRuntime.sourceRoot}" \
             --prefix PYTHONPATH : "$out/share/star-kb" \
             --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.swi-prolog ]}
           makeWrapper ${python}/bin/python3 "$out/bin/starintel-llm" \
@@ -44,7 +48,7 @@
         dontBuild = true;
         installPhase = ''
           mkdir -p "$out/share/star-kb" "$out/bin"
-          cp -R star_kb_service prolog_star_kb service "$out/share/star-kb/"
+          cp -R star_kb_service star_kb_learning prolog_star_kb kb service "$out/share/star-kb/"
           makeWrapper ${python}/bin/python3 "$out/bin/star-kb-service" \
             --add-flags "-m star_kb_service" \
             --set PYTHONPATH "$out/share/star-kb" \
@@ -86,6 +90,7 @@
         cd "$TMPDIR"
         prolog-star-kb --help
         starintel-llm --help
+        star-kb-learn --help
         printf '%s\n' '{"_id":"packaged:relation","dtype":"relation","dataset":"fixture","data":{"subject":"a","predicate":"owns","object":"b"}}' > fixture.json
         prolog-star-kb project fixture.json -o fixture.pl
         swipl -q -g "use_module('${tools}/share/star-kb/kb/core/star_json.pl'),use_module('${tools}/share/star-kb/kb/core/star_reasoning.pl'),star_json:load_projection('fixture.pl'),star_reasoning:tool_explain_relation('packaged:relation',_),halt" -t 'halt(1)'
@@ -103,6 +108,7 @@
         python3 scripts/sync.py --check
         python3 scripts/validate-docs.py
         export STARLANG_IDENTITY_ROOT=${star-lang}
+        python3 scripts/verify-learning.py --starlang ${star-lang}
         python3 -m unittest discover -s tests -p 'test_*.py' -v
         touch "$out"
       '';
@@ -112,11 +118,13 @@
         prolog-star-kb = tools;
         starintel-llm = tools;
         star-kb-service = service;
+        star-kb-learn = tools;
       };
       apps.${system} = {
         default = { type = "app"; program = "${tools}/bin/prolog-star-kb"; };
         prolog-star-kb = { type = "app"; program = "${tools}/bin/prolog-star-kb"; };
         starintel-llm = { type = "app"; program = "${tools}/bin/starintel-llm"; };
+        star-kb-learn = { type = "app"; program = "${tools}/bin/star-kb-learn"; };
         star-kb-service = { type = "app"; program = "${service}/bin/star-kb-service"; };
       };
       checks.${system} = { installed-cli = cliCheck; installed-service = installedServiceCheck; source = sourceCheck; };

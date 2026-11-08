@@ -1,0 +1,31 @@
+#+title: Continuous symbolic learning
+#+description: User-specified bounded learning controller over canonical evidence with held-out evaluation and recursive predicate reuse.
+#+status: active
+#+filetags: :star-kb:design:learning:
+:PROPERTIES:
+:ID: star-kb-continuous-learning
+:END:
+
+* Approved scope
+The project owner's 2026-11-08 implementation request specifies a complete evidence-driven learning loop, fixed neural weights, explicit uncertainty, scope isolation, bounded execution, synthetic examples and validation. This expands the old projection-only implementation scope without authorizing bulk production ingestion or live collector access.
+
+* Architecture
+See [[file:../../../docs/continuous-learning.md][architecture and interface contract]]. Reuse canonical StarLang 0.10.1 schema pins, the existing scalar projector and bounded SWI contracts. Canonical JSON remains authoritative; SQLite is a replay cache and typed journal. Exported learning records are canonical Document extensions, not promoted source truth.
+
+* Slice
+Implement bounded field-equivalence synthesis, independent held-out evaluation,
+versioned selectors, evidence planning, incremental ingestion and replay-safe queue
+execution. Demonstrate source ancestry and language conventions, then measure
+later evidence diversity against chronological retrieval at equal collection cost.
+General causal inference and unrestricted ILP remain explicitly unimplemented.
+
+* Approval Table
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Research | Project owner | APPROVED | Inspect actual repository and interfaces | 2026-11-08 user implementation request |
+| Design | Project owner | APPROVED | Detailed objectives and constraints | 2026-11-08 user specification |
+| Execution | Project owner | APPROVED | Proceed through implementation and repair | 2026-11-08 user implementation request |
+| Verification | Repository maintainer | PENDING | Actual schema, SWI, regressions and CI | scripts/verify-learning.py |
+
+* Changelog
+- 2026-11-08 :: Implement the user-specified first end-to-end learning slice; preserve historical projection-only gate records.

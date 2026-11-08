@@ -25,6 +25,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y swi-prolog-nox
+      - name: Install canonical schema validator
+        run: python3 -m pip install jsonschema==4.26.0
       - name: Compile scripts
         run: python3 -m py_compile scripts/*.py prolog_star_kb/*.py
       - name: Unit tests

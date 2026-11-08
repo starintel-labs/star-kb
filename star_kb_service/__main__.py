@@ -7,6 +7,8 @@ from pathlib import Path
 import signal
 import threading
 from .contracts import closed
+from .actors import KnowledgeActors, ACTOR_OPERATIONS
+from star_kb_learning.contracts import Scope
 from .engine import Engine
 from .projection import Snapshot
 from .persistence import ServerDocuments
@@ -43,11 +45,20 @@ def configured_service(config, root):
     """Release earlier workers when a later scope or credential fails startup."""
     with ExitStack() as owned:
         engines = {}
+        actors = {}
         for scope in config["scopes"]:
-            closed(scope, ("tenant", "dataset"), ("documents", "server"))
+            closed(scope, ("tenant", "dataset"), ("documents", "server", "learning"))
             key = scope["tenant"], scope["dataset"]
-            if key in engines:
+            if key in engines or key in actors:
                 raise ValueError("duplicate scope")
+            if "learning" in scope:
+                if "documents" in scope or "server" in scope:
+                    raise ValueError("learning scope owns its explicit canonical replay source")
+                learning=closed(scope["learning"],("project","operation","path"),("documents",))
+                actors[key]=KnowledgeActors(root,Scope(learning["project"],learning["operation"],key[1],tenant=key[0]),
+                    learning["path"],os.environ.get("STARLANG_SWI_EXECUTABLE","swipl"),learning.get("documents",[]))
+                owned.callback(actors[key].close)
+                continue
             if ("documents" in scope) == ("server" in scope):
                 raise ValueError("scope requires exactly one snapshot source")
             if "server" in scope:
@@ -59,12 +70,15 @@ def configured_service(config, root):
             owned.callback(engines[key].close)
         credentials = {}
         for item in config["credentials"]:
-            closed(item, ("identity", "tenant", "dataset", "tokenEnv"))
+            closed(item, ("identity", "tenant", "dataset", "tokenEnv"), ("capabilities",))
+            capabilities=item.get("capabilities",[])
+            if not isinstance(capabilities,list) or any(c not in ACTOR_OPERATIONS for c in capabilities):
+                raise ValueError("unknown actor capability")
             token = os.environ[item["tokenEnv"]]
             if token in credentials:
                 raise ValueError("duplicate credential")
-            credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"])
-        service = Service(credentials, engines)
+            credentials[token] = Principal(item["identity"], item["tenant"], item["dataset"], tuple(capabilities))
+        service = Service(credentials, engines, actors)
         owned.pop_all()
         return service
 
@@ -73,6 +87,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=Path)
     parser.add_argument("--http-port", type=int, default=8080)
+    parser.add_argument("--http-only", action="store_true", help="Use the existing HTTP listener without starting optional ZMQ")
     args = parser.parse_args()
     config = closed(json.loads(args.config.read_bytes()), ("scopes", "credentials"))
     root = os.environ["STARLANG_ROOT"]
@@ -83,11 +98,12 @@ def main():
         signal.signal(sig, lambda *_: stopped.set())
     try:
         http = http_server(service, args.http_port)
-        zmq = ZmqServer(service)
+        if not args.http_only:
+            zmq = ZmqServer(service)
         thread = threading.Thread(target=http.serve_forever, daemon=True)
         thread.start()
         print(json.dumps({"http": f"http://127.0.0.1:{http.server_port}/v1/kb",
-                          "zmq": f"tcp://127.0.0.1:{zmq.port}"}), flush=True)
+                          "zmq": None if zmq is None else f"tcp://127.0.0.1:{zmq.port}"}), flush=True)
         stopped.wait()
     finally:
         shutdown(service, http, thread, zmq)
