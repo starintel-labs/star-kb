@@ -1,0 +1,221 @@
+#+title: Reward-guided symbolic learning, active review, and mathematical planning
+#+description: Proposed no-LLM Star KB learning architecture using Aleph, active learning, operator-toggleable reward maximizers, validated StarIntel document generation, and an optional Wolfram mathematical adapter.
+#+status: proposed
+#+filetags: :star-kb:research:aleph:active-learning:optimization:starintel:wolfram:
+:PROPERTIES:
+:ID: star-kb-reward-guided-symbolic-learning-research
+:END:
+
+* Research status
+
+This is a reviewable research proposal, not an implementation authorization. The existing approved Star KB projection/query slice remains in force. The actor-learning-loop implementation in [[https://github.com/starintel-labs/star-kb/pull/8][PR #8]] is *open, unmerged, and currently not mergeable* as observed on 2026-10-10; none of its new actor APIs can be assumed to exist on =main=. Do not start a parallel candidate store, verifier, message protocol, or scheduler. The proposed extension must reuse or reconcile the PR #8 event/query log, formal admission rules, and StarLang-owned actor contracts.
+
+The operator asked for non-LLM autonomy, Aleph-based inductive learning, active learning with human feedback, mathematical reward maximizers (notably rewards for new graph links), ability to create new facts and StarIntel documents, and a Wolfram-style computational backend. This note translates that direction into falsifiable architecture choices while preserving the RAGE research, design, and implementation gates.
+
+* Approval Table
+
+| Approval area | Required authority | State | Evidence required | Evidence reference |
+|---------------+--------------------+-------+-------------------+--------------------|
+| Research | Project owner | PENDING | Review the proposed maximizers, learning boundaries, and existing-PR reuse | this note and the 2026-10-10 discussion |
+| Design | Project owner | NOT STARTED | Explicit research approval, accepted ADR, pinned API and protocol contracts | |
+| Execution | Project owner | NOT STARTED | Explicit design approval, tests, schema-lock preflight, implementation issue/PR | |
+| Verification | Repository maintainer | NOT STARTED | Exact-head deterministic and integration gates on future implementation | |
+
+* Verified Facts
+
+- Star KB =prolog_star_kb/projection.py= projects canonical StarIntel JSON into a rebuildable Prolog fact store; =kb/core/star_reasoning.pl= already supports graph paths, references, explanations, contradictions, provenance, and bounded tool semantics. =mine-shapes= mines candidate structural ontology evidence. These are *not* yet an Aleph learner or a reward scheduler. Evidence: [[https://github.com/starintel-labs/star-kb/blob/main/docs/prolog-star-kb.md][projection contract]] and [[https://github.com/starintel-labs/star-kb/blob/main/kb/core/star_reasoning.pl][reasoning predicates]], inspected 2026-10-10.
+- [[https://github.com/starintel-labs/star-kb/pull/8][Star KB PR #8]] adds candidate staging, independent votes, append-only query/review events, a rebuildable SQLite replay index, formal SWI-Prolog admission, and StarLang actor declarations. Its documented deferred work includes canonical promotion. The observed PR is open at head =a63d888a2eb1fdaea9cb3915d7df10ca3db17477=, base is stale relative to =main=, and reported mergeable=false on 2026-10-10. Those features are *not* in the default branch.
+- The [[https://www.swi-prolog.org/pack/list?p=aleph][SWI-Prolog Aleph pack]] implements inductive logic programming from background knowledge, positive examples, negative examples, and bounded hypothesis declarations. Its SWI port documents =modeh=, =modeb=, =determination= and =aleph_set=; pin the installed pack version before reproducible runs. Verified from pack documentation 2026-10-10.
+- Wolfram Language [[https://reference.wolfram.com/language/ref/Maximize.html][Maximize]] and [[https://reference.wolfram.com/language/ref/NMaximize.html][NMaximize]] support optimization under constraints. A 2026-10-10 Wolfram Language evaluator probe computed =Maximize[{5 a + 7 b + 4 c, 3 a + 4 b + 2 c <= 5 && 0 <= a <= 1 && 0 <= b <= 1 && 0 <= c <= 1}, {a, b, c}, Integers]= and returned ={9, {a -> 1, b -> 0, c -> 1}}=. This establishes a feasible small discrete-planning model, *not* a deployed Wolfram-StarIntel integration.
+- =lost-rob0t/starintel-pro-actors/AGENTS.md= says Star Server owns recurring-target cadence, leases, retries, and recovery. =lost-rob0t/quasar/README.md= places command/control authority in Common Lisp and treats the browser as a view/client. Do not create a new actor-local scheduler or treat UI state as policy authority.
+- The existing =star-kb= learning PR references a base StarIntel schema version separately from the StarLang learning-spec digest. Pin and validate active *release*, immutable base schema, profile, revision and expansion identity independently before emitting canonical documents. A historical =0.9.0= base does not itself prove a =0.10.x= additive release is unsupported.
+
+* Inference
+
+A useful non-LLM autonomous system is a closed loop of =observe -> derive -> propose -> prioritize -> act -> evaluate -> learn -> review/promote=. It can improve from recorded outcomes without modifying its own approval policy. Two distinct products emerge: (1) an auditable learner producing candidate rules and candidate facts; (2) a constrained planner selecting permitted actor actions from a fixed capability registry. Neither owns canonical truth.
+
+The best first reward objective is *independently verified new links per resource consumed*, not raw count of relation documents. Merely asserting a link must earn zero positive reward. Likewise, missing evidence is not a negative example in an open-world corpus.
+
+* Candidate architecture (non-binding)
+
+#+begin_src text
+canonical StarIntel JSON (server, pinned schema/manifest)
+        |
+        v
+Star KB deterministic projection + existing safe query tools
+        |
+        +--> evidence/graph candidate generator --> inference packet
+        |                                           |
+        |                                           v
+        |                               candidate lifecycle (PR #8)
+        |                               review/votes/formal verifier
+        |                                           |
+        |                                           v
+        |                            canonical-document publisher bridge
+        |                            (separate scoped capability; proposed)
+        |
+        +--> active learner --> bounded human label request
+        |         |                        |
+        |         +<-- recorded label/outcome +
+        |
+        +--> Aleph worker --> candidate Prolog clause + held-out metrics
+        |         |
+        |         v
+        |     review -> versioned rule module in star-kb
+        |
+        +--> planner --> objective vectors --> constrained math adapter
+                                          --> authorized Star Server target
+                                                   |
+                                                   v
+                                      actor execution + outcome event
+                                                   |
+                                                   +--> feedback/replay
+#+end_src
+
+=star-kb= is owner of the reusable fact/rule semantics and learning objective vocabulary. The already-approved StarIntel server / Quasar actor control plane is owner of dispatch, lease, capability, target, and retry operations. Python Pykka workers and Lisp/Sento workers remain adapters/actors, not competing policy stores. A proposed =starintel-prolog= bridge may own a typed Prolog-to-canonical-document constructor and publisher, but it must consume the existing schema-generated client contract; a repository or live implementation is not currently established.
+
+* Operator-toggleable maximizers
+
+A maximizer is a versioned *operational policy profile*, not an arbitrary Prolog predicate passed to a service or a StarIntel document-field extension. Every profile has =profile_id=, =revision=, =enabled objectives=, =finite nonnegative weights=, =normalization definition=, =policy/eligibility constraints=, =resource budget=, and =operator provenance=. Old runs retain their original profile revision.
+
+| Candidate maximizer | Positive outcome measured | Anti-gaming condition |
+|---------------------+---------------------------+-----------------------|
+| verified-links | Independent, verified novel subject-predicate-object relationship | Unique normalized edge fingerprint and independent evidence; candidate creation alone scores zero |
+| validated-facts | Promoted, supported novel fact | Distinct claim fingerprint and successful canonical-ingest receipt |
+| contradiction-resolution | Explicitly closed contradictory evidence with trace | Preserve contested evidence; do not erase/relabel inconvenient observations |
+| missing-evidence-coverage | Materially reduced missing evidence for approved targets | Measure against a fixed requirement snapshot, not self-defined easy targets |
+| information-gain | Reduced uncertainty or improved held-out predictive loss | Use calibration and counterfactual baseline; avoid counting confident but false predictions |
+| source-diversity | Added independent evidence family with provenance | Multiple reposts of one source count as one evidence family |
+| efficient-execution | Accepted outcome per bounded work unit | Track wall time, paid calls, CPU, tokens=0 for no-LLM mode, and resource budget |
+
+Hard constraints (=schema validity=, =dataset/capability scope=, =provenance=, =privacy=, =independent human review when mandated=, =actor admission=, =budget=) are not rewards and cannot be disabled by sliders. A link between persons does not imply collaboration, endorsement, intent, or guilt. Unknown/ambiguous identities must remain separate candidates.
+
+Proposed score over eligible actions =a= and enabled objectives =i=:
+
+#+begin_src text
+maximize_a  sum_i [ normalized_weight_i *
+                    expected(validated_gain_i(a) - baseline_i) ]
+            - cost(a) - expected_harm_penalty(a)
+
+subject to:
+  authorized(a) AND schema_compatible(a) AND within_budget(a)
+  AND no_unsupported_promotion(a) AND tenant_and_dataset_scope(a)
+#+end_src
+
+For selecting a *set* of actions, use binary decision variables with explicit compute, latency, call, and concurrency budgets. Normalize all objective units before combining; do not add incomparable counts, seconds, and percentages directly. Define each reward at the *outcome event*, not at proposal emission. Negative outcomes, later refutations, and reversals post compensating reward-accounting events rather than silently editing history. Use deterministic tie-breaking and snapshot the candidate set, random seed, model/solver version, objective revision and outcome cutoff.
+
+* Aleph learning protocol
+
+1. Build *background predicates* from the pinned canonical projection, immutable source/evidence snapshots, and approved existing rules. Never let a learner invent source facts or import untrusted clauses into the privileged Prolog process.
+2. Use explicit positive/negative *reviewed labels* as examples. Unknown cases are unlabelled, not negative. Track reviewer identity, evidence cutoff, reason, provenance, and subsequent correction.
+3. Define head/body modes, determinations, allowed term types, clause-depth/length limits, timeouts and sample budgets. Train the Aleph subprocess on a fixed manifest and isolated workspace.
+4. Produce a *candidate clause*, support and counterexamples, precision/recall, calibration where applicable, held-out source/time-split performance, complexity and proof tree. Historical links must not leak across entity or source families into validation examples.
+5. Never consult generated clauses directly in server authority contexts. Review, lint, test, stage and approve a versioned module in =star-kb=; invalidate dependent conclusions when an adopted rule is later superseded.
+
+Example *hypothesis shape only* (not an approved rule):
+
+#+begin_src prolog
+needs_review(Entity) :-
+    contradictory_evidence(Entity),
+    outdated_primary_source(Entity),
+    missing_independent_source(Entity).
+#+end_src
+
+Aleph can learn logic patterns but it does not optimize arbitrary business outcomes on its own. Reward optimization belongs to a separate planner; reward-derived labels must not become unreviewed truth.
+
+* Active learning and human feedback
+
+Choose label requests from eligible unresolved candidates using uncertainty, expected error reduction, diversity, review cost, and topic/tenant scope. A proposed first policy is =expected_information_gain / estimated_review_cost=, with a queue fairness limit and exploration floor. A simple uncertainty sampling baseline is mandatory for comparison; label count reduction alone is not proof of improvement.
+
+A reviewer can label =supported=, =refuted=, =insufficient-evidence=, =identity-ambiguous=, =not-relevant=, or =requires-more-evidence=. Persist event-time reason and the evidence seen by the reviewer. Separate a factual label from an operator preference about investigation usefulness. Feedback is versioned and can be corrected; historical records stay auditable.
+
+For an optional strategy-selection learner, compare a deterministic greedy baseline, a budgeted integer optimizer, and a seeded multi-armed bandit (e.g. Beta-Bernoulli Thompson sampling for binary verified outcomes). Nonstationary data and delayed reward require temporal evaluation; do not treat all edges/actors as independent identical trials. Bound exploration and avoid feedback loops that repeatedly sample the same sources.
+
+* Candidate fact and canonical document path
+
+| Stage | Artifact | Owner | Requirement |
+|-------+----------+-------+-------------|
+| Inferred | Prolog result plus derivation tree and source IDs | Star KB | Replayable snapshot; clearly marked derived |
+| Proposed | Candidate fact/link payload and normalized fingerprint | Learning actor / PR #8 event log | No authority; idempotent identity |
+| Reviewed | Human/independent votes and counterevidence | PR #8 review/vote protocol | Reviewer independence and full history |
+| Verified | Formal admission certificate | PR #8 Prolog verifier | Exact schema, provenance, source/evidence and spec digest checks |
+| Materialized | Canonical StarIntel document and/or relation | Proposed starintel-prolog bridge | Build against pinned current manifest, no guessed dtype/fields |
+| Ingested | Durable server receipt plus replay cursor | StarIntel Server | Re-read canonical revision; reject duplicates and stale writes |
+| Rewarded | Outcome/reward ledger event | Planner/evaluator | Credit only the verified novelty and independently observed effect |
+
+A fact can be both new and *wrong*. Candidate documents may be created for review; verified/published canonical facts must pass the full applicable gate. Do not invent a new =dtype=, =status= value, schema extension or custom field on a hunch. If a canonical contract change is required, it must be a *versioned StarIntel specification change* handled at the canonical schema authority, never hidden in extension or runtime policy. A new StarLang actor/message protocol likewise requires its own explicit protocol revision.
+
+Materialization should generate stable IDs from canonical claim fingerprint plus source and tenant scopes; attach evidence/source IDs, derivation rule+digest, original document revisions, origin actor, run ID, timestamps and contested/refuted status using *actual approved schema fields*. Publication must occur through discovered contracted client operations, not direct privileged CouchDB access or a legacy endpoint. Issue a bounded target/operation to Star Server and let the existing idempotency, outbox, lease, capability and fencing behavior protect the write. Revisions that refute a fact produce correction/supersession events and revoke outstanding reward credit.
+
+* Wolfram-StarIntel mathematical adapter
+
+The proposed Wolfram integration is an *optional numerical/symbolic compute worker*, not a second knowledge store, policy engine or LLM. Fixed operations may include =optimize_action_batch= (mixed-integer), =compare_objectives= (Pareto frontier), =estimate_information_gain=, =fit_calibration= and =graph_statistics=. Callers send typed, bounded numeric features and a fixed operation identifier. The worker enforces argument shape, variable counts, CPU/time quotas and budget before translating into Wolfram Language; never accept arbitrary Wolfram expressions through an actor API.
+
+A constrained optimizer can use =Maximize= or =NMaximize= on small problems. An entirely local deterministic solver must remain a supported fallback when Wolfram is not licensed, reachable, or permitted for data-classification reasons. No private corpus, individual-level personal data or secrets are ever transmitted to a Wolfram cloud service by default. Server command/control still validates the resulting action list.
+
+Reproducible observed arithmetic fixture (Wolfram evaluator, 2026-10-10):
+
+#+begin_src text
+actions a,b,c: costs 3,4,2; rewards 5,7,4; capacity 5
+binary maximize: 5*a + 7*b + 4*c
+solver outcome: score 9, a=1, b=0, c=1
+#+end_src
+
+The reward fixture is *synthetic*. It tests numerical feasibility, not actual accuracy, threat prediction, or live investigator utility.
+
+* Adversarial test matrix for future implementation
+
+| Test | Expected result |
+|------+-----------------|
+| One actor proposes 10,000 near-identical links | One normalized candidate; no positive reward before verification |
+| Ten reposts of the same claim | One evidence family; no independent corroboration |
+| Ground truth later refutes a previously rewarded link | Append negative adjustment and invalidation; preserve audit history |
+| Human labels a case unknown | Do not mint an Aleph negative example |
+| Proposed rule succeeds on training but fails held-out time/source split | Reject activation, retain candidate for inspection |
+| Wolfram adapter crashes/times out | No unauthorized action; deterministic fallback or typed failure |
+| Optimizer selects out-of-scope target | Reject despite high reward score |
+| Reward profile changes during action execution | Outcome attributed to original immutable profile revision |
+| Evidence expires or source is retracted | Derived claims become stale/contested; schedule re-review |
+| Document projection base/release/spec lock mismatch | No publication; typed version-blocker with evidence |
+| User disables every soft maximizer | No autonomous positive-gain selection; hard safety/maintenance rules remain |
+| Two proposed inferred edges point to ambiguous identities | Do not force merge, do not reward unverified association |
+| Replaying identical events/snapshots | Same candidates, learning examples, selection and reward ledger |
+
+Future acceptance criteria: full no-LLM offline fixture run; one Aleph positive/negative example set yields a held-out candidate rule; one human correction updates the next labeled-learning batch; toggles change action selection reproducibly; an inference yields a candidate canonical document; publication is refused without admission and schema validation; after authorized publish and server re-read a reward event is emitted once. Inspectable proof and terminal failure receipts are required.
+
+* Contradictions
+
+- PR #8 presents approved actor learning/admission code but remains open and unmergeable against current =main=. Reuse is contingent on rebase/verification, not on its prose alone.
+- Raw link-count maximization conflicts with provenance and identity discipline. Proposed resolution: reward only evidence-verified *novel* links, deduplicate by semantics and source family, penalize corrections.
+- Aleph induction is not the same as numeric reinforcement learning. The two need explicit example/feedback and reward ledgers and must not silently translate an optimization score into a truth claim.
+- The system has an active StarIntel release dimension separate from immutable schema version, and PR #8 has a separate StarLang learning spec identity. All three must be pinned; apparent version discrepancies must be resolved against their authorities.
+- The desire to create StarIntel facts conflicts with prohibiting KB projection writes. Resolution: candidate hypotheses can be staged; *only the scoped canonical publisher* may author/ingest validated documents.
+
+* Unresolved Questions
+
+- Is PR #8 the intended integration base after its merge conflict is resolved, or should its actor contracts be split into smaller conformant PRs?
+- Which active StarIntel release, profile and schema lock does the planned =starintel-prolog= document writer consume? A live pinned manifest preflight is required.
+- Which reward profiles are operator defaults and which require a human in the loop? Should certain validated low-risk derived facts allow automatic promotion, or only staged candidates?
+- Which source families count as statistically independent for verified-link reward? What temporal decay and policy apply?
+- Which self-learned rules may be activated without human authorization, if any? What rollback and model-registry retention is required?
+- Is an on-premises licensed Wolfram Engine available, or should the default math worker be open-source with Wolfram as an opt-in provider?
+- Who owns rule-compilation and versioned =star-kb= module activation, and which StarLang protocol revision will carry action/feedback events?
+- Which metrics demonstrate real utility beyond graph growth (e.g. corrected precision, review hours saved, false-positive burden, verified source coverage)?
+
+These are research/design gates. They are not permission to modify the canonical StarIntel schema, activate learned rules, publish claims, crawl private sources, or begin bulk ingestion.
+
+* Footnotes and Glossary
+
+- *Aleph / ILP* — inductive logic programming: propose logical clauses from constrained background facts and explicitly labeled examples.
+- *Active learning* — choose which unlabeled cases should be reviewed to improve a model efficiently.
+- *Maximizer* — a weighted objective exposed to an operator, distinct from mandatory authorization/safety constraints.
+- *Goodhart effect* — turning a proxy metric into an optimized target can degrade the real objective.
+- *Reward ledger* — append-only attribution of verified outcomes, corrections, and their triggering profile revision.
+- *Canonical StarIntel JSON* — immutable/versioned authoritative document records validated by StarIntel's pinned contract; a Prolog projection is derived.
+- *StarLang learning spec* — proposed/PR #8 protocol identity for candidate/vote/audit events; not the same as the canonical StarIntel document specification.
+
+* Changelog
+
+| Date | Change | Author or actor | Evidence |
+|------+--------+-----------------+----------|
+| 2026-10-10 | Investigated Aleph, active learning, maximizers, canonical candidate-to-document boundary, Wolfram optimization, and existing unmerged learning PR; research only | ChatGPT with GitHub/Wolfram connectors | GitHub PR #8, Star KB main contracts, SWI Aleph pack, Wolfram evaluator output |
