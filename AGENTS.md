@@ -41,6 +41,16 @@ Read the active note, its direct links, the project index, relevant source, and 
 - Learned/neuro-symbolic output is candidate/generated knowledge by default, not trusted canonical truth.
 - StarLang should bind to the same projection/query contract rather than create a parallel ontology.
 
+## Reusable-rule ownership and product boundaries
+
+- `starintel-labs/star-kb` is the **single implementation owner** for reusable StarIntel domain reasoning and policy rules, including situation correlation, temporal/spatial assessment, provenance and corroboration, contradiction detection, severity/priority assessment, change detection, and SITREP selection logic.
+- Keep versioned, testable reusable Prolog predicates and any reusable rule profiles in this repository. Expose them through bounded, documented query/evaluation contracts. Consumers must not fork or reimplement these rules in server/actor/UI/application repositories.
+- `starintel-server`, `starintel-pro-actors`, and other generic StarIntel components own transport, actor lifecycle, ingestion, persistence, materialized views, and thin rule-call adapters; they do not own duplicate decision logic. `star-lang` remains the canonical schema and structural/semantic contract authority, with a version bump for schema changes.
+- Zara is an **optional downstream consumer**, never a core StarIntel dependency. Native Zara integrations, UI, notification behavior, imports, and product-specific adapters may exist only in Zara-scoped repositories; no native Zara code or required Zara dependency belongs in StarIntel repositories.
+- Product-only behavior (for example, Zara wake-word handling) and source-specific extraction/transport are not generalized StarIntel domain rules merely because they contain conditionals.
+- New shared rules require provenance-aware, deterministic fixtures, versioning for changed public semantics, and evidence-bearing output. Rule results remain derived candidates until canonical StarIntel document ingestion validates their evidence.
+- Architectural source of truth: [docs/situation-rule-ownership.md](docs/situation-rule-ownership.md). Refer to this contract from consumer repositories; do not maintain competing copies of the rule catalogue.
+
 ## AI/RLM boundary
 
 AI-facing tools expose named operations such as graph traversal, explanation, contradiction search, timeline, provenance, comparison, why-not, and reasoning-capability routing.
